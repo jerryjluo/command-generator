@@ -4,6 +4,7 @@ import { TimeAgo } from '../common/TimeAgo';
 import { TabPanel } from './TabPanel';
 import { SystemPromptTab } from './tabs/SystemPromptTab';
 import { UserPromptTab } from './tabs/UserPromptTab';
+import { UserQueryTab } from './tabs/UserQueryTab';
 import { ResponseTab } from './tabs/ResponseTab';
 import { TmuxContextTab } from './tabs/TmuxContextTab';
 import { BuildToolsTab } from './tabs/BuildToolsTab';
@@ -69,6 +70,11 @@ export function LogDetail({ log, loading, error, onBack }: LogDetailProps) {
       content: <UserPromptTab content={lastIteration?.model_input.user_prompt || ''} />,
     },
     {
+      id: 'user-query',
+      label: 'User Query',
+      content: <UserQueryTab content={log.user_query} />,
+    },
+    {
       id: 'tmux-context',
       label: 'Tmux Context',
       content: (
@@ -80,7 +86,7 @@ export function LogDetail({ log, loading, error, onBack }: LogDetailProps) {
     },
     {
       id: 'build-tools',
-      label: 'Build Tools',
+      label: 'Build Tools Context',
       content: <BuildToolsTab userPrompt={lastIteration?.model_input.user_prompt || ''} />,
     },
     {

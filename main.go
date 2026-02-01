@@ -26,6 +26,7 @@ import (
 func main() {
 	// Parse flags
 	model := flag.String("model", "", "Claude model to use (default: opus)")
+	contextLines := flag.Int("context-lines", terminal.ScrollbackLines, "Number of tmux scrollback lines to capture")
 	help := flag.Bool("help", false, "Show help")
 	logs := flag.Bool("logs", false, "Launch web-based log viewer")
 	flag.Parse()
@@ -69,7 +70,7 @@ func main() {
 	}
 
 	// Capture terminal context
-	terminalContext, warning, err := terminal.CaptureContext()
+	terminalContext, warning, err := terminal.CaptureContext(*contextLines)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: %v\n", err)
 	}
@@ -249,9 +250,10 @@ func printUsage() {
 	fmt.Println("  cmd --logs")
 	fmt.Println()
 	fmt.Println("Options:")
-	fmt.Println("  --model <model>  Claude model to use (default: opus)")
-	fmt.Println("  --logs           Launch web-based log viewer")
-	fmt.Println("  --help           Show this help message")
+	fmt.Println("  --model <model>       Claude model to use (default: opus)")
+	fmt.Println("  --context-lines <n>   Number of tmux scrollback lines to capture (default: 100)")
+	fmt.Println("  --logs                Launch web-based log viewer")
+	fmt.Println("  --help                Show this help message")
 	fmt.Println()
 	fmt.Println("Examples:")
 	fmt.Println("  cmd \"find all large files modified today\"")

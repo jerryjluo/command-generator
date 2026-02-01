@@ -12,7 +12,7 @@ export function UserPromptTab({ content }: UserPromptTabProps) {
   return (
     <div>
       <p className="text-sm text-gray-600 mb-4">
-        The complete user prompt including query, context, and instructions.
+        The complete prompt sent to Claude including context, build tools, and user query.
       </p>
       <CodeBlock code={content} title="User Prompt" />
     </div>

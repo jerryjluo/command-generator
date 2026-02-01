@@ -8,7 +8,7 @@ import (
 )
 
 const (
-	ScrollbackLines = 500
+	ScrollbackLines = 100
 )
 
 // TmuxInfo holds information about the current tmux session
@@ -52,7 +52,7 @@ func GetTmuxInfo() TmuxInfo {
 
 // CaptureContext captures the terminal scrollback via tmux
 // Returns the context string and a warning message if not in tmux
-func CaptureContext() (context string, warning string, err error) {
+func CaptureContext(lines int) (context string, warning string, err error) {
 	if !InTmux() {
 		return "", "Warning: Not running in tmux. Terminal context capture is unavailable.", nil
 	}
@@ -60,7 +60,7 @@ func CaptureContext() (context string, warning string, err error) {
 	// Capture scrollback from tmux
 	// -p: print to stdout
 	// -S -N: start from N lines back (negative = scrollback)
-	cmd := exec.Command("tmux", "capture-pane", "-p", "-S", fmt.Sprintf("-%d", ScrollbackLines))
+	cmd := exec.Command("tmux", "capture-pane", "-p", "-S", fmt.Sprintf("-%d", lines))
 	output, err := cmd.Output()
 	if err != nil {
 		return "", "", fmt.Errorf("failed to capture tmux pane: %w", err)
