@@ -82,9 +82,13 @@ export function LogTable({
                   currentOrder={filters.order}
                   onSort={onSort}
                 />
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Command
-                </th>
+                <SortHeader
+                  label="Command"
+                  field="command"
+                  currentSort={filters.sort}
+                  currentOrder={filters.order}
+                  onSort={onSort}
+                />
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">

@@ -16,13 +16,11 @@ export function SortHeader({ label, field, currentSort, currentOrder, onSort }: 
     >
       <div className="flex items-center gap-1">
         {label}
-        <span className="text-gray-400">
-          {isActive ? (
-            currentOrder === 'asc' ? '↑' : '↓'
-          ) : (
-            '↕'
-          )}
-        </span>
+        {isActive && (
+          <span className="text-gray-400">
+            {currentOrder === 'asc' ? '↑' : '↓'}
+          </span>
+        )}
       </div>
     </th>
   );

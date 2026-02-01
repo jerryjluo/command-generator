@@ -190,6 +190,12 @@ func sortLogs(logs []logging.LogSummary, field string, ascending bool) {
 				} else {
 					swap = strings.ToLower(logs[j].UserQuery) > strings.ToLower(logs[i].UserQuery)
 				}
+			case "command":
+				if ascending {
+					swap = strings.ToLower(logs[j].CommandPreview) < strings.ToLower(logs[i].CommandPreview)
+				} else {
+					swap = strings.ToLower(logs[j].CommandPreview) > strings.ToLower(logs[i].CommandPreview)
+				}
 			}
 
 			if swap {
