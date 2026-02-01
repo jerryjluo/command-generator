@@ -13,10 +13,10 @@ const (
 
 // TmuxInfo holds information about the current tmux session
 type TmuxInfo struct {
-	InTmux  bool
-	Session string
-	Window  string
-	Pane    string
+	InTmux  bool   `json:"in_tmux"`
+	Session string `json:"session,omitempty"`
+	Window  string `json:"window,omitempty"`
+	Pane    string `json:"pane,omitempty"`
 }
 
 // InTmux returns true if running inside a tmux session

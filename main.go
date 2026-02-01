@@ -12,12 +12,13 @@ import (
 	"github.com/jerryluo/cmd/internal/claude"
 	"github.com/jerryluo/cmd/internal/clipboard"
 	"github.com/jerryluo/cmd/internal/config"
+	"github.com/jerryluo/cmd/internal/logging"
 	"github.com/jerryluo/cmd/internal/terminal"
 )
 
 func main() {
 	// Parse flags
-	model := flag.String("model", "", "Claude model to use (default: haiku)")
+	model := flag.String("model", "", "Claude model to use (default: opus)")
 	help := flag.Bool("help", false, "Show help")
 	flag.Parse()
 
@@ -65,6 +66,9 @@ func main() {
 	// Get tmux info for display
 	tmuxInfo := terminal.GetTmuxInfo()
 
+	// Initialize request logger
+	logger := logging.NewLogger(query, claudeMdContent, terminalContext, cfg.Model, tmuxInfo)
+
 	// Interactive loop
 	reader := bufio.NewReader(os.Stdin)
 	feedback := ""
@@ -79,18 +83,22 @@ func main() {
 		}
 		fmt.Printf("\nGenerating command using %s (%s)...\n", cfg.Model, tmuxContext)
 
-		response, err := claude.GenerateCommand(cfg.Model, claudeMdContent, terminalContext, query, feedback)
+		result, err := claude.GenerateCommand(cfg.Model, claudeMdContent, terminalContext, query, feedback)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
 
+		// Log this iteration
+		logger.AddIteration(feedback, result.SystemPrompt, result.UserPrompt,
+			result.RawOutput, result.Response.Command, result.Response.Explanation)
+
 		// Display the command and explanation
 		fmt.Println()
-		fmt.Printf("\033[1mCommand:\033[0m %s\n", response.Command)
+		fmt.Printf("\033[1mCommand:\033[0m %s\n", result.Response.Command)
 		fmt.Println()
 		fmt.Println("\033[1mExplanation:\033[0m")
-		printExplanation(response.Explanation)
+		printExplanation(result.Response.Explanation)
 		fmt.Println()
 
 		// Prompt for action
@@ -105,16 +113,18 @@ func main() {
 
 		switch key {
 		case 'a', 'A':
+			logger.Finalize(logging.StatusAccepted, "")
 			// Copy to clipboard
-			if err := clipboard.Copy(response.Command); err != nil {
+			if err := clipboard.Copy(result.Response.Command); err != nil {
 				fmt.Fprintf(os.Stderr, "Warning: Could not copy to clipboard: %v\n", err)
-				fmt.Printf("Command: %s\n", response.Command)
+				fmt.Printf("Command: %s\n", result.Response.Command)
 			} else {
 				fmt.Println("Command copied to clipboard!")
 			}
 			os.Exit(0)
 
 		case 'q', 'Q':
+			logger.Finalize(logging.StatusQuit, "")
 			fmt.Println("Exiting without copying.")
 			os.Exit(0)
 
@@ -134,6 +144,7 @@ func main() {
 			// Loop continues with new feedback
 
 		case 3: // Ctrl+C
+			logger.Finalize(logging.StatusQuit, "")
 			fmt.Println("^C")
 			os.Exit(0)
 
@@ -150,7 +161,7 @@ func printUsage() {
 	fmt.Println("  cmd [options] <query>")
 	fmt.Println()
 	fmt.Println("Options:")
-	fmt.Println("  --model <model>  Claude model to use (default: haiku)")
+	fmt.Println("  --model <model>  Claude model to use (default: opus)")
 	fmt.Println("  --help           Show this help message")
 	fmt.Println()
 	fmt.Println("Examples:")

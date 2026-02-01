@@ -6,7 +6,7 @@ import (
 )
 
 const (
-	DefaultModel    = "haiku"
+	DefaultModel    = "opus"
 	ConfigDirName   = "cmd"
 	ClaudeMdName    = "claude.md"
 	DefaultClaudeMd = `# Command Generation Preferences

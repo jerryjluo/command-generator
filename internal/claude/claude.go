@@ -48,8 +48,16 @@ type ClaudeResponse struct {
 	Error            bool      `json:"is_error"`
 }
 
+// GenerateResult contains all data from a generation call for logging
+type GenerateResult struct {
+	Response     *Response
+	SystemPrompt string
+	UserPrompt   string
+	RawOutput    string
+}
+
 // GenerateCommand calls the claude CLI to generate a command
-func GenerateCommand(model, claudeMdContent, terminalContext, userQuery string, feedback string) (*Response, error) {
+func GenerateCommand(model, claudeMdContent, terminalContext, userQuery string, feedback string) (*GenerateResult, error) {
 	// Build the prompt
 	prompt := buildPrompt(terminalContext, userQuery, feedback)
 
@@ -71,10 +79,12 @@ func GenerateCommand(model, claudeMdContent, terminalContext, userQuery string, 
 
 	cmd := exec.Command("claude", args...)
 	output, err := cmd.CombinedOutput()
+	rawOutput := string(output)
+
 	if err != nil {
 		// Try to parse output even on error - sometimes it contains useful info
 		if len(output) > 0 {
-			return nil, fmt.Errorf("claude CLI error: %s", string(output))
+			return nil, fmt.Errorf("claude CLI error: %s", rawOutput)
 		}
 		return nil, fmt.Errorf("failed to execute claude CLI: %w", err)
 	}
@@ -91,7 +101,12 @@ func GenerateCommand(model, claudeMdContent, terminalContext, userQuery string, 
 
 	// Check for structured_output first (used when --json-schema is provided)
 	if claudeResp.StructuredOutput != nil {
-		return claudeResp.StructuredOutput, nil
+		return &GenerateResult{
+			Response:     claudeResp.StructuredOutput,
+			SystemPrompt: systemPrompt,
+			UserPrompt:   prompt,
+			RawOutput:    rawOutput,
+		}, nil
 	}
 
 	// Fallback: parse the inner result (the actual command response)
@@ -106,7 +121,12 @@ func GenerateCommand(model, claudeMdContent, terminalContext, userQuery string, 
 		return nil, fmt.Errorf("failed to parse command response: %w (json was: %s)", err, jsonStr)
 	}
 
-	return &response, nil
+	return &GenerateResult{
+		Response:     &response,
+		SystemPrompt: systemPrompt,
+		UserPrompt:   prompt,
+		RawOutput:    rawOutput,
+	}, nil
 }
 
 // extractJSON tries to extract a JSON object from text that may contain markdown or extra content
