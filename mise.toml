@@ -5,8 +5,8 @@ go = "1.25"
 description = "Build the binary"
 run = "go build -o cmd ."
 
-[tasks.install]
-description = "Build and install the binary globally to ~/.local/bin"
+[tasks.install-cli]
+description = "Build and install only the CLI binary to ~/.local/bin"
 run = """
 mkdir -p ~/.local/bin
 go build -o ~/.local/bin/cmd .
@@ -44,11 +44,14 @@ cd web && npm run build
 echo "Built both backend and frontend"
 """
 
-[tasks.install-all]
-description = "Build and install everything globally"
+[tasks.install]
+description = "Build and install CLI + web assets globally to ~/.local/bin"
 depends = ["web-build"]
 run = """
-mkdir -p ~/.local/bin
+mkdir -p ~/.local/bin/web
 go build -o ~/.local/bin/cmd .
+cp -r web/dist ~/.local/bin/web/
 echo "Installed cmd to ~/.local/bin/cmd"
+echo "Installed web assets to ~/.local/bin/web/dist"
+echo "Make sure ~/.local/bin is in your PATH"
 """

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { Routes, Route, useNavigate, useParams } from 'react-router-dom';
 import { Layout } from './components/Layout';
 import { LogTable } from './components/LogTable';
 import { LogDetail } from './components/LogDetail';
@@ -6,42 +6,56 @@ import { useLogs } from './hooks/useLogs';
 import { useLogDetail } from './hooks/useLogDetail';
 import { useFilters } from './hooks/useFilters';
 
-function App() {
-  const [selectedLogId, setSelectedLogId] = useState<string | null>(null);
+function LogListPage() {
+  const navigate = useNavigate();
   const { filters, setFilter, clearFilters, setSort } = useFilters();
-  const { logs, total, loading: logsLoading, error: logsError } = useLogs(filters);
-  const { log, loading: logLoading, error: logError } = useLogDetail(selectedLogId);
+  const { logs, total, loading, error } = useLogs(filters);
 
   const handleSelectLog = (id: string) => {
-    setSelectedLogId(id);
-  };
-
-  const handleBack = () => {
-    setSelectedLogId(null);
+    navigate(`/logs/${id}`);
   };
 
   return (
+    <LogTable
+      logs={logs}
+      total={total}
+      loading={loading}
+      error={error}
+      filters={filters}
+      onFilterChange={setFilter}
+      onClearFilters={clearFilters}
+      onSort={setSort}
+      onSelectLog={handleSelectLog}
+    />
+  );
+}
+
+function LogDetailPage() {
+  const navigate = useNavigate();
+  const { id } = useParams<{ id: string }>();
+  const { log, loading, error } = useLogDetail(id || null);
+
+  const handleBack = () => {
+    navigate('/');
+  };
+
+  return (
+    <LogDetail
+      log={log!}
+      loading={loading}
+      error={error}
+      onBack={handleBack}
+    />
+  );
+}
+
+function App() {
+  return (
     <Layout>
-      {selectedLogId ? (
-        <LogDetail
-          log={log!}
-          loading={logLoading}
-          error={logError}
-          onBack={handleBack}
-        />
-      ) : (
-        <LogTable
-          logs={logs}
-          total={total}
-          loading={logsLoading}
-          error={logsError}
-          filters={filters}
-          onFilterChange={setFilter}
-          onClearFilters={clearFilters}
-          onSort={setSort}
-          onSelectLog={handleSelectLog}
-        />
-      )}
+      <Routes>
+        <Route path="/" element={<LogListPage />} />
+        <Route path="/logs/:id" element={<LogDetailPage />} />
+      </Routes>
     </Layout>
   );
 }
