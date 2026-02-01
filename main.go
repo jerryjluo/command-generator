@@ -2,10 +2,15 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"flag"
 	"fmt"
 	"os"
+	"os/signal"
+	"path/filepath"
 	"strings"
+	"syscall"
+	"time"
 
 	"golang.org/x/term"
 
@@ -14,6 +19,7 @@ import (
 	"github.com/jerryluo/cmd/internal/clipboard"
 	"github.com/jerryluo/cmd/internal/config"
 	"github.com/jerryluo/cmd/internal/logging"
+	"github.com/jerryluo/cmd/internal/server"
 	"github.com/jerryluo/cmd/internal/terminal"
 )
 
@@ -21,11 +27,18 @@ func main() {
 	// Parse flags
 	model := flag.String("model", "", "Claude model to use (default: opus)")
 	help := flag.Bool("help", false, "Show help")
+	logs := flag.Bool("logs", false, "Launch web-based log viewer")
 	flag.Parse()
 
 	if *help {
 		printUsage()
 		os.Exit(0)
+	}
+
+	// Handle --logs flag
+	if *logs {
+		runLogViewer()
+		return
 	}
 
 	// Get the query from remaining arguments
@@ -162,19 +175,88 @@ func main() {
 	}
 }
 
+// runLogViewer starts the web-based log viewer
+func runLogViewer() {
+	// Find the web directory relative to the executable
+	exe, err := os.Executable()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error finding executable: %v\n", err)
+		os.Exit(1)
+	}
+	exeDir := filepath.Dir(exe)
+
+	// Try multiple locations for web directory
+	webDirCandidates := []string{
+		filepath.Join(exeDir, "web"),
+		filepath.Join(exeDir, "..", "web"),
+		"web", // Current directory
+	}
+
+	var webDir string
+	for _, candidate := range webDirCandidates {
+		distPath := filepath.Join(candidate, "dist")
+		if _, err := os.Stat(distPath); err == nil {
+			webDir = candidate
+			break
+		}
+	}
+
+	if webDir == "" {
+		fmt.Fprintln(os.Stderr, "Error: web/dist directory not found.")
+		fmt.Fprintln(os.Stderr, "Please build the frontend first:")
+		fmt.Fprintln(os.Stderr, "  cd web && npm install && npm run build")
+		os.Exit(1)
+	}
+
+	srv := server.NewServer(server.DefaultPort, webDir)
+	url := srv.URL()
+
+	// Handle graceful shutdown
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+
+	// Start server in background
+	go func() {
+		fmt.Printf("Starting log viewer at %s\n", url)
+		fmt.Println("Press Ctrl+C to stop")
+		if err := srv.Start(); err != nil {
+			fmt.Fprintf(os.Stderr, "Server error: %v\n", err)
+			os.Exit(1)
+		}
+	}()
+
+	// Open browser
+	if err := server.OpenBrowser(url); err != nil {
+		fmt.Fprintf(os.Stderr, "Could not open browser: %v\n", err)
+		fmt.Printf("Please open %s in your browser\n", url)
+	}
+
+	// Wait for shutdown signal
+	<-sigChan
+	fmt.Println("\nShutting down...")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	srv.Shutdown(ctx)
+	fmt.Println("Server stopped")
+}
+
 func printUsage() {
 	fmt.Println("cmd - Generate CLI commands from natural language")
 	fmt.Println()
 	fmt.Println("Usage:")
 	fmt.Println("  cmd [options] <query>")
+	fmt.Println("  cmd --logs")
 	fmt.Println()
 	fmt.Println("Options:")
 	fmt.Println("  --model <model>  Claude model to use (default: opus)")
+	fmt.Println("  --logs           Launch web-based log viewer")
 	fmt.Println("  --help           Show this help message")
 	fmt.Println()
 	fmt.Println("Examples:")
 	fmt.Println("  cmd \"find all large files modified today\"")
 	fmt.Println("  cmd --model sonnet \"compress all images in current directory\"")
+	fmt.Println("  cmd --logs")
 	fmt.Println()
 	fmt.Println("Configuration:")
 	fmt.Println("  ~/.config/cmd/claude.md - Customize command generation preferences")

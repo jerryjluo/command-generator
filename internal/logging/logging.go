@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -211,4 +212,184 @@ func (l *Logger) save() error {
 	}
 
 	return os.Rename(tmpPath, l.filePath)
+}
+
+// LogSummary is a lightweight representation of a log for list views
+type LogSummary struct {
+	ID             string      `json:"id"`
+	UserQuery      string      `json:"user_query"`
+	FinalStatus    FinalStatus `json:"final_status"`
+	Model          string      `json:"model"`
+	Timestamp      time.Time   `json:"timestamp"`
+	IterationCount int         `json:"iteration_count"`
+	CommandPreview string      `json:"command_preview"`
+	TmuxSession    string      `json:"tmux_session,omitempty"`
+}
+
+// ListLogs returns summaries of all log files in the log directory.
+// Results are sorted by timestamp descending (newest first).
+func ListLogs() ([]LogSummary, error) {
+	logDir, err := GetLogDir()
+	if err != nil {
+		return nil, err
+	}
+
+	entries, err := os.ReadDir(logDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return []LogSummary{}, nil
+		}
+		return nil, err
+	}
+
+	var summaries []LogSummary
+	for _, entry := range entries {
+		if entry.IsDir() || filepath.Ext(entry.Name()) != ".json" {
+			continue
+		}
+
+		// Skip temp files
+		if filepath.Ext(filepath.Base(entry.Name())[:len(entry.Name())-5]) == ".tmp" {
+			continue
+		}
+
+		filePath := filepath.Join(logDir, entry.Name())
+		log, err := readLogFile(filePath)
+		if err != nil {
+			continue // Skip files that can't be parsed
+		}
+
+		// Extract command preview from last iteration
+		commandPreview := ""
+		if len(log.Iterations) > 0 {
+			cmd := log.Iterations[len(log.Iterations)-1].ModelOutput.Command
+			if len(cmd) > 80 {
+				commandPreview = cmd[:77] + "..."
+			} else {
+				commandPreview = cmd
+			}
+		}
+
+		// ID is filename without .json extension
+		id := entry.Name()[:len(entry.Name())-5]
+
+		summaries = append(summaries, LogSummary{
+			ID:             id,
+			UserQuery:      log.UserQuery,
+			FinalStatus:    log.Metadata.FinalStatus,
+			Model:          log.Metadata.Model,
+			Timestamp:      log.Metadata.Timestamp,
+			IterationCount: log.Metadata.IterationCount,
+			CommandPreview: commandPreview,
+			TmuxSession:    log.Metadata.TmuxInfo.Session,
+		})
+	}
+
+	// Sort by timestamp descending (newest first)
+	for i := 0; i < len(summaries)-1; i++ {
+		for j := i + 1; j < len(summaries); j++ {
+			if summaries[j].Timestamp.After(summaries[i].Timestamp) {
+				summaries[i], summaries[j] = summaries[j], summaries[i]
+			}
+		}
+	}
+
+	return summaries, nil
+}
+
+// ReadLog reads and parses a single log file by ID.
+// ID is the filename without the .json extension.
+func ReadLog(id string) (*SessionLog, error) {
+	logDir, err := GetLogDir()
+	if err != nil {
+		return nil, err
+	}
+
+	filePath := filepath.Join(logDir, id+".json")
+	return readLogFile(filePath)
+}
+
+// readLogFile reads and parses a log file from the given path.
+func readLogFile(filePath string) (*SessionLog, error) {
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		return nil, err
+	}
+
+	var log SessionLog
+	if err := json.Unmarshal(data, &log); err != nil {
+		return nil, err
+	}
+
+	return &log, nil
+}
+
+// SessionLogWithID wraps SessionLog with an ID field for API responses
+type SessionLogWithID struct {
+	ID string `json:"id"`
+	SessionLog
+}
+
+// ReadLogWithID reads a log and returns it with its ID included
+func ReadLogWithID(id string) (*SessionLogWithID, error) {
+	log, err := ReadLog(id)
+	if err != nil {
+		return nil, err
+	}
+
+	return &SessionLogWithID{
+		ID:         id,
+		SessionLog: *log,
+	}, nil
+}
+
+// SearchLogs searches through all logs for the given query string.
+// It searches in user_query, command, and explanation fields.
+func SearchLogs(query string) ([]LogSummary, error) {
+	if query == "" {
+		return ListLogs()
+	}
+
+	allLogs, err := ListLogs()
+	if err != nil {
+		return nil, err
+	}
+
+	query = strings.ToLower(query)
+	var results []LogSummary
+
+	for _, summary := range allLogs {
+		// Check user query
+		if strings.Contains(strings.ToLower(summary.UserQuery), query) {
+			results = append(results, summary)
+			continue
+		}
+
+		// Check command preview
+		if strings.Contains(strings.ToLower(summary.CommandPreview), query) {
+			results = append(results, summary)
+			continue
+		}
+
+		// For deeper search, load the full log
+		log, err := ReadLog(summary.ID)
+		if err != nil {
+			continue
+		}
+
+		found := false
+		for _, iter := range log.Iterations {
+			if strings.Contains(strings.ToLower(iter.ModelOutput.Command), query) ||
+				strings.Contains(strings.ToLower(iter.ModelOutput.Explanation), query) {
+				found = true
+				break
+			}
+		}
+
+		if found {
+			results = append(results, summary)
+		}
+	}
+
+	return results, nil
 }

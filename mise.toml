@@ -20,3 +20,35 @@ run = """
 rm -f ~/.local/bin/cmd
 echo "Removed cmd from ~/.local/bin"
 """
+
+[tasks.web-install]
+description = "Install web frontend dependencies"
+dir = "web"
+run = "npm install"
+
+[tasks.web-build]
+description = "Build the web frontend"
+dir = "web"
+run = "npm run build"
+
+[tasks.web-dev]
+description = "Start web frontend dev server"
+dir = "web"
+run = "npm run dev"
+
+[tasks.build-all]
+description = "Build both backend and frontend"
+run = """
+go build -o cmd .
+cd web && npm run build
+echo "Built both backend and frontend"
+"""
+
+[tasks.install-all]
+description = "Build and install everything globally"
+depends = ["web-build"]
+run = """
+mkdir -p ~/.local/bin
+go build -o ~/.local/bin/cmd .
+echo "Installed cmd to ~/.local/bin/cmd"
+"""
