@@ -7,6 +7,8 @@ import (
 	"os"
 	"strings"
 
+	"golang.org/x/term"
+
 	"github.com/jerryluo/cmd/internal/claude"
 	"github.com/jerryluo/cmd/internal/clipboard"
 	"github.com/jerryluo/cmd/internal/config"
@@ -84,46 +86,46 @@ func main() {
 		// Prompt for action
 		fmt.Print("\033[1m[A]\033[0mccept  \033[1m[R]\033[0meject with feedback  \033[1m[Q]\033[0muit: ")
 
-		input, err := reader.ReadString('\n')
+		key, err := readSingleKey()
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error reading input: %v\n", err)
+			fmt.Fprintf(os.Stderr, "\nError reading input: %v\n", err)
 			os.Exit(1)
 		}
-		input = strings.TrimSpace(strings.ToLower(input))
+		fmt.Println() // Move to next line after keypress
 
-		switch {
-		case input == "a" || input == "accept":
+		switch key {
+		case 'a', 'A':
 			// Copy to clipboard
 			if err := clipboard.Copy(response.Command); err != nil {
 				fmt.Fprintf(os.Stderr, "Warning: Could not copy to clipboard: %v\n", err)
 				fmt.Printf("Command: %s\n", response.Command)
 			} else {
-				fmt.Println("\nCommand copied to clipboard!")
+				fmt.Println("Command copied to clipboard!")
 			}
 			os.Exit(0)
 
-		case input == "q" || input == "quit":
+		case 'q', 'Q':
 			fmt.Println("Exiting without copying.")
 			os.Exit(0)
 
-		case input == "r" || input == "reject" || strings.HasPrefix(input, "r "):
-			// Get feedback
-			if strings.HasPrefix(input, "r ") {
-				feedback = strings.TrimPrefix(input, "r ")
-			} else {
-				fmt.Print("Enter feedback: ")
-				feedback, err = reader.ReadString('\n')
-				if err != nil {
-					fmt.Fprintf(os.Stderr, "Error reading feedback: %v\n", err)
-					os.Exit(1)
-				}
-				feedback = strings.TrimSpace(feedback)
+		case 'r', 'R':
+			// Get feedback using normal buffered input
+			fmt.Print("Enter feedback: ")
+			feedback, err = reader.ReadString('\n')
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error reading feedback: %v\n", err)
+				os.Exit(1)
 			}
+			feedback = strings.TrimSpace(feedback)
 			if feedback == "" {
 				fmt.Println("No feedback provided, please try again.")
 				continue
 			}
 			// Loop continues with new feedback
+
+		case 3: // Ctrl+C
+			fmt.Println("^C")
+			os.Exit(0)
 
 		default:
 			fmt.Println("Invalid option. Please enter A, R, or Q.")
@@ -167,4 +169,17 @@ func printExplanation(explanation string) {
 			fmt.Printf("  • %s\n", line)
 		}
 	}
+}
+
+// readSingleKey reads a single keypress without requiring Enter
+func readSingleKey() (byte, error) {
+	oldState, err := term.MakeRaw(int(os.Stdin.Fd()))
+	if err != nil {
+		return 0, err
+	}
+	defer term.Restore(int(os.Stdin.Fd()), oldState)
+
+	b := make([]byte, 1)
+	_, err = os.Stdin.Read(b)
+	return b[0], err
 }
