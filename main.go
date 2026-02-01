@@ -1,0 +1,170 @@
+package main
+
+import (
+	"bufio"
+	"flag"
+	"fmt"
+	"os"
+	"strings"
+
+	"github.com/jerryluo/cmd/internal/claude"
+	"github.com/jerryluo/cmd/internal/clipboard"
+	"github.com/jerryluo/cmd/internal/config"
+	"github.com/jerryluo/cmd/internal/terminal"
+)
+
+func main() {
+	// Parse flags
+	model := flag.String("model", "", "Claude model to use (default: haiku)")
+	help := flag.Bool("help", false, "Show help")
+	flag.Parse()
+
+	if *help {
+		printUsage()
+		os.Exit(0)
+	}
+
+	// Get the query from remaining arguments
+	args := flag.Args()
+	if len(args) == 0 {
+		fmt.Fprintln(os.Stderr, "Error: No query provided")
+		printUsage()
+		os.Exit(1)
+	}
+	query := strings.Join(args, " ")
+
+	// Check claude CLI is available
+	if err := claude.CheckClaudeCLI(); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+
+	// Load config and ensure claude.md exists
+	cfg := config.Load(*model)
+	if err := config.EnsureClaudeMd(); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: Could not create claude.md: %v\n", err)
+	}
+
+	// Load claude.md content
+	claudeMdContent, err := config.LoadClaudeMd()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: Could not load claude.md: %v\n", err)
+	}
+
+	// Capture terminal context
+	terminalContext, warning, err := terminal.CaptureContext()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: %v\n", err)
+	}
+	if warning != "" {
+		fmt.Fprintln(os.Stderr, warning)
+	}
+
+	// Interactive loop
+	reader := bufio.NewReader(os.Stdin)
+	feedback := ""
+
+	for {
+		fmt.Println("\nGenerating command...")
+
+		response, err := claude.GenerateCommand(cfg.Model, claudeMdContent, terminalContext, query, feedback)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+
+		// Display the command and explanation
+		fmt.Println()
+		fmt.Printf("\033[1mCommand:\033[0m %s\n", response.Command)
+		fmt.Println()
+		fmt.Println("\033[1mExplanation:\033[0m")
+		printExplanation(response.Explanation)
+		fmt.Println()
+
+		// Prompt for action
+		fmt.Print("\033[1m[A]\033[0mccept  \033[1m[R]\033[0meject with feedback  \033[1m[Q]\033[0muit: ")
+
+		input, err := reader.ReadString('\n')
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error reading input: %v\n", err)
+			os.Exit(1)
+		}
+		input = strings.TrimSpace(strings.ToLower(input))
+
+		switch {
+		case input == "a" || input == "accept":
+			// Copy to clipboard
+			if err := clipboard.Copy(response.Command); err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: Could not copy to clipboard: %v\n", err)
+				fmt.Printf("Command: %s\n", response.Command)
+			} else {
+				fmt.Println("\nCommand copied to clipboard!")
+			}
+			os.Exit(0)
+
+		case input == "q" || input == "quit":
+			fmt.Println("Exiting without copying.")
+			os.Exit(0)
+
+		case input == "r" || input == "reject" || strings.HasPrefix(input, "r "):
+			// Get feedback
+			if strings.HasPrefix(input, "r ") {
+				feedback = strings.TrimPrefix(input, "r ")
+			} else {
+				fmt.Print("Enter feedback: ")
+				feedback, err = reader.ReadString('\n')
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "Error reading feedback: %v\n", err)
+					os.Exit(1)
+				}
+				feedback = strings.TrimSpace(feedback)
+			}
+			if feedback == "" {
+				fmt.Println("No feedback provided, please try again.")
+				continue
+			}
+			// Loop continues with new feedback
+
+		default:
+			fmt.Println("Invalid option. Please enter A, R, or Q.")
+		}
+	}
+}
+
+func printUsage() {
+	fmt.Println("cmd - Generate CLI commands from natural language")
+	fmt.Println()
+	fmt.Println("Usage:")
+	fmt.Println("  cmd [options] <query>")
+	fmt.Println()
+	fmt.Println("Options:")
+	fmt.Println("  --model <model>  Claude model to use (default: haiku)")
+	fmt.Println("  --help           Show this help message")
+	fmt.Println()
+	fmt.Println("Examples:")
+	fmt.Println("  cmd \"find all large files modified today\"")
+	fmt.Println("  cmd --model sonnet \"compress all images in current directory\"")
+	fmt.Println()
+	fmt.Println("Configuration:")
+	fmt.Println("  ~/.config/cmd/claude.md - Customize command generation preferences")
+}
+
+func printExplanation(explanation string) {
+	lines := strings.Split(explanation, "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		// Add bullet if not already present
+		if !strings.HasPrefix(line, "-") && !strings.HasPrefix(line, "*") && !strings.HasPrefix(line, "•") {
+			fmt.Printf("  • %s\n", line)
+		} else {
+			// Replace - or * with • for consistency
+			line = strings.TrimPrefix(line, "- ")
+			line = strings.TrimPrefix(line, "* ")
+			line = strings.TrimPrefix(line, "• ")
+			fmt.Printf("  • %s\n", line)
+		}
+	}
+}
