@@ -9,6 +9,7 @@ import (
 
 	"golang.org/x/term"
 
+	"github.com/jerryluo/cmd/internal/buildtools"
 	"github.com/jerryluo/cmd/internal/claude"
 	"github.com/jerryluo/cmd/internal/clipboard"
 	"github.com/jerryluo/cmd/internal/config"
@@ -66,6 +67,13 @@ func main() {
 	// Get tmux info for display
 	tmuxInfo := terminal.GetTmuxInfo()
 
+	// Detect build tools in current directory
+	buildToolsResult := buildtools.Detect(".")
+	buildToolsContext := ""
+	if buildToolsResult != nil {
+		buildToolsContext = buildToolsResult.FormatForPrompt()
+	}
+
 	// Initialize request logger
 	logger := logging.NewLogger(query, claudeMdContent, terminalContext, cfg.Model, tmuxInfo)
 
@@ -83,7 +91,7 @@ func main() {
 		}
 		fmt.Printf("\nGenerating command using %s (%s)...\n", cfg.Model, tmuxContext)
 
-		result, err := claude.GenerateCommand(cfg.Model, claudeMdContent, terminalContext, query, feedback)
+		result, err := claude.GenerateCommand(cfg.Model, claudeMdContent, terminalContext, buildToolsContext, query, feedback)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
