@@ -62,12 +62,22 @@ func main() {
 		fmt.Fprintln(os.Stderr, warning)
 	}
 
+	// Get tmux info for display
+	tmuxInfo := terminal.GetTmuxInfo()
+
 	// Interactive loop
 	reader := bufio.NewReader(os.Stdin)
 	feedback := ""
 
 	for {
-		fmt.Println("\nGenerating command...")
+		// Display generation message with model and tmux context
+		var tmuxContext string
+		if tmuxInfo.InTmux {
+			tmuxContext = fmt.Sprintf("tmux: %s/%s/%s", tmuxInfo.Session, tmuxInfo.Window, tmuxInfo.Pane)
+		} else {
+			tmuxContext = "no tmux context"
+		}
+		fmt.Printf("\nGenerating command using %s (%s)...\n", cfg.Model, tmuxContext)
 
 		response, err := claude.GenerateCommand(cfg.Model, claudeMdContent, terminalContext, query, feedback)
 		if err != nil {

@@ -11,9 +11,43 @@ const (
 	ScrollbackLines = 500
 )
 
+// TmuxInfo holds information about the current tmux session
+type TmuxInfo struct {
+	InTmux  bool
+	Session string
+	Window  string
+	Pane    string
+}
+
 // InTmux returns true if running inside a tmux session
 func InTmux() bool {
 	return os.Getenv("TMUX") != ""
+}
+
+// GetTmuxInfo returns information about the current tmux session, window, and pane
+func GetTmuxInfo() TmuxInfo {
+	if !InTmux() {
+		return TmuxInfo{InTmux: false}
+	}
+
+	info := TmuxInfo{InTmux: true}
+
+	// Get session name
+	if out, err := exec.Command("tmux", "display-message", "-p", "#S").Output(); err == nil {
+		info.Session = strings.TrimSpace(string(out))
+	}
+
+	// Get window name
+	if out, err := exec.Command("tmux", "display-message", "-p", "#W").Output(); err == nil {
+		info.Window = strings.TrimSpace(string(out))
+	}
+
+	// Get pane index
+	if out, err := exec.Command("tmux", "display-message", "-p", "#P").Output(); err == nil {
+		info.Pane = strings.TrimSpace(string(out))
+	}
+
+	return info
 }
 
 // CaptureContext captures the terminal scrollback via tmux
