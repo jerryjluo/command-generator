@@ -3,11 +3,12 @@ package server
 import (
 	"context"
 	"fmt"
+	"io"
+	"io/fs"
 	"net/http"
-	"os"
 	"os/exec"
-	"path/filepath"
 	"runtime"
+	"strings"
 	"time"
 )
 
@@ -16,15 +17,15 @@ const DefaultPort = 8765
 // Server manages the HTTP server for the log viewer
 type Server struct {
 	port       int
-	webDir     string
+	assets     fs.FS
 	httpServer *http.Server
 }
 
 // NewServer creates a new server instance
-func NewServer(port int, webDir string) *Server {
+func NewServer(port int, assets fs.FS) *Server {
 	return &Server{
 		port:   port,
-		webDir: webDir,
+		assets: assets,
 	}
 }
 
@@ -36,26 +37,33 @@ func (s *Server) Start() error {
 	mux.HandleFunc("GET /api/v1/logs", withMiddleware(handleListLogs))
 	mux.HandleFunc("GET /api/v1/logs/{id}", withMiddleware(handleGetLog))
 
-	// Serve static files from web/dist
-	distDir := filepath.Join(s.webDir, "dist")
-	if _, err := os.Stat(distDir); os.IsNotExist(err) {
-		return fmt.Errorf("web/dist directory not found. Run 'npm run build' in the web directory first")
-	}
-
-	// File server for static assets
-	fs := http.FileServer(http.Dir(distDir))
+	// File server for static assets (from embedded filesystem)
+	fileServer := http.FileServerFS(s.assets)
 
 	// SPA fallback handler
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		// Try to serve the file directly
-		path := filepath.Join(distDir, r.URL.Path)
-		if _, err := os.Stat(path); err == nil {
-			fs.ServeHTTP(w, r)
+		path := strings.TrimPrefix(r.URL.Path, "/")
+		if path == "" {
+			path = "index.html"
+		}
+		f, err := s.assets.Open(path)
+		if err == nil {
+			f.Close()
+			fileServer.ServeHTTP(w, r)
 			return
 		}
 
 		// Fallback to index.html for SPA routing
-		http.ServeFile(w, r, filepath.Join(distDir, "index.html"))
+		index, err := s.assets.Open("index.html")
+		if err != nil {
+			http.Error(w, "index.html not found", http.StatusInternalServerError)
+			return
+		}
+		defer index.Close()
+		content, _ := io.ReadAll(index)
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Write(content)
 	})
 
 	s.httpServer = &http.Server{

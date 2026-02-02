@@ -3,11 +3,12 @@ package main
 import (
 	"bufio"
 	"context"
+	"embed"
 	"flag"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -23,6 +24,9 @@ import (
 	"github.com/jerryluo/cmd/internal/server"
 	"github.com/jerryluo/cmd/internal/terminal"
 )
+
+//go:embed web/dist
+var webAssets embed.FS
 
 func main() {
 	// Parse flags
@@ -186,38 +190,14 @@ func main() {
 
 // runLogViewer starts the web-based log viewer
 func runLogViewer() {
-	// Find the web directory relative to the executable
-	exe, err := os.Executable()
+	// Extract the embedded web/dist filesystem
+	distFS, err := fs.Sub(webAssets, "web/dist")
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error finding executable: %v\n", err)
-		os.Exit(1)
-	}
-	exeDir := filepath.Dir(exe)
-
-	// Try multiple locations for web directory
-	webDirCandidates := []string{
-		filepath.Join(exeDir, "web"),
-		filepath.Join(exeDir, "..", "web"),
-		"web", // Current directory
-	}
-
-	var webDir string
-	for _, candidate := range webDirCandidates {
-		distPath := filepath.Join(candidate, "dist")
-		if _, err := os.Stat(distPath); err == nil {
-			webDir = candidate
-			break
-		}
-	}
-
-	if webDir == "" {
-		fmt.Fprintln(os.Stderr, "Error: web/dist directory not found.")
-		fmt.Fprintln(os.Stderr, "Please build the frontend first:")
-		fmt.Fprintln(os.Stderr, "  cd web && npm install && npm run build")
+		fmt.Fprintf(os.Stderr, "Error accessing embedded web assets: %v\n", err)
 		os.Exit(1)
 	}
 
-	srv := server.NewServer(server.DefaultPort, webDir)
+	srv := server.NewServer(server.DefaultPort, distFS)
 	url := srv.URL()
 
 	// Handle graceful shutdown
