@@ -1,5 +1,7 @@
 # CLAUDE.md
 
+> Last updated: 2026-02-01
+
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Project Overview
@@ -34,11 +36,12 @@ npm run lint            # ESLint
 1. Parse flags (`--model`, `--context-lines`, `--logs`, `--help`)
 2. Capture tmux terminal context (scrollback)
 3. Detect build tools in current directory
-4. Call Claude API via `claude` CLI with JSON schema for structured output
-5. Display command + explanation
-6. Interactive loop: Accept (A), Reject with feedback (R), Quit (Q)
-7. Copy accepted command to clipboard
-8. Log all interactions to JSON files
+4. Detect documentation files for additional context
+5. Call Claude API via `claude` CLI with JSON schema for structured output
+6. Display command + explanation
+7. Interactive loop: Accept (A), Reject with feedback (R), Quit (Q)
+8. Copy accepted command to clipboard
+9. Log all interactions to JSON files
 
 ### Internal Packages
 
@@ -51,6 +54,7 @@ npm run lint            # ESLint
 | `internal/logging/` | JSON session logging to `~/.local/share/cmd/logs/` |
 | `internal/clipboard/` | Cross-platform clipboard (pbcopy/xclip) |
 | `internal/server/` | HTTP server for web log viewer |
+| `internal/docs/` | Detects documentation files (README.md, CONTRIBUTING.md, etc.) for context |
 
 ### Build Tools Detection
 

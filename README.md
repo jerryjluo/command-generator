@@ -1,5 +1,7 @@
 # cmd
 
+> Last updated: 2026-02-01
+
 A CLI tool that generates shell commands from natural language using Claude AI.
 
 Describe what you want to do in plain English, and `cmd` generates the appropriate shell command with an explanation. Refine it iteratively with feedback until you get exactly what you need.
@@ -10,6 +12,7 @@ Describe what you want to do in plain English, and `cmd` generates the appropria
 - **Context-aware** - Automatically detects your terminal history (tmux) and available build tools
 - **Iterative refinement** - Provide feedback to adjust the generated command
 - **Build tool detection** - Recognizes Makefile, package.json, mise, just, task, cargo, pyproject.toml, and docker-compose
+- **Documentation detection** - Includes README, CONTRIBUTING, and other docs as context
 - **Session logging** - All generations are logged for review
 - **Web log viewer** - Browse your generation history in a web interface
 
@@ -118,10 +121,11 @@ Example preferences:
 
 1. Captures your recent terminal history (requires tmux)
 2. Detects build tools in your current directory
-3. Sends context + your request to Claude with a JSON schema
-4. Displays the generated command and explanation
-5. Loops for feedback until you accept or quit
-6. Copies accepted command to clipboard and logs the session
+3. Detects documentation files (README, CONTRIBUTING, etc.)
+4. Sends context + your request to Claude with a JSON schema
+5. Displays the generated command and explanation
+6. Loops for feedback until you accept or quit
+7. Copies accepted command to clipboard and logs the session
 
 ## Development
 
