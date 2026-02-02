@@ -57,9 +57,9 @@ type GenerateResult struct {
 }
 
 // GenerateCommand calls the claude CLI to generate a command
-func GenerateCommand(model, claudeMdContent, terminalContext, buildToolsContext, userQuery string, feedback string) (*GenerateResult, error) {
+func GenerateCommand(model, claudeMdContent, terminalContext, buildToolsContext, docsContext, userQuery string, feedback string) (*GenerateResult, error) {
 	// Build the prompt
-	prompt := buildPrompt(terminalContext, buildToolsContext, userQuery, feedback)
+	prompt := buildPrompt(terminalContext, buildToolsContext, docsContext, userQuery, feedback)
 
 	// Build the system prompt
 	systemPrompt := systemPromptAddition
@@ -204,7 +204,7 @@ func extractJSONObject(text string) string {
 }
 
 // buildPrompt constructs the full prompt including context
-func buildPrompt(terminalContext, buildToolsContext, userQuery, feedback string) string {
+func buildPrompt(terminalContext, buildToolsContext, docsContext, userQuery, feedback string) string {
 	var sb strings.Builder
 
 	if terminalContext != "" {
@@ -218,6 +218,13 @@ func buildPrompt(terminalContext, buildToolsContext, userQuery, feedback string)
 		sb.WriteString("Available build tools and commands in current directory:\n")
 		sb.WriteString("---\n")
 		sb.WriteString(buildToolsContext)
+		sb.WriteString("\n---\n\n")
+	}
+
+	if docsContext != "" {
+		sb.WriteString("Project documentation (command-related sections):\n")
+		sb.WriteString("---\n")
+		sb.WriteString(docsContext)
 		sb.WriteString("\n---\n\n")
 	}
 

@@ -26,6 +26,7 @@ export interface Iteration {
 export interface ContextSources {
   claude_md_content: string;
   terminal_context: string;
+  documentation_context: string;
 }
 
 export interface Metadata {

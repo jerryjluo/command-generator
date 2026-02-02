@@ -7,6 +7,7 @@ import { UserPromptTab } from './tabs/UserPromptTab';
 import { UserQueryTab } from './tabs/UserQueryTab';
 import { ResponseTab } from './tabs/ResponseTab';
 import { TmuxContextTab } from './tabs/TmuxContextTab';
+import { DocumentationContextTab } from './tabs/DocumentationContextTab';
 import { BuildToolsTab } from './tabs/BuildToolsTab';
 import { PreferencesTab } from './tabs/PreferencesTab';
 
@@ -81,6 +82,15 @@ export function LogDetail({ log, loading, error, onBack }: LogDetailProps) {
         <TmuxContextTab
           terminalContext={log.context_sources.terminal_context}
           tmuxInfo={log.metadata.tmux_info}
+        />
+      ),
+    },
+    {
+      id: 'documentation-context',
+      label: 'Documentation Context',
+      content: (
+        <DocumentationContextTab
+          documentationContext={log.context_sources.documentation_context}
         />
       ),
     },

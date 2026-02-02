@@ -18,6 +18,7 @@ import (
 	"github.com/jerryluo/cmd/internal/claude"
 	"github.com/jerryluo/cmd/internal/clipboard"
 	"github.com/jerryluo/cmd/internal/config"
+	"github.com/jerryluo/cmd/internal/docs"
 	"github.com/jerryluo/cmd/internal/logging"
 	"github.com/jerryluo/cmd/internal/server"
 	"github.com/jerryluo/cmd/internal/terminal"
@@ -88,8 +89,15 @@ func main() {
 		buildToolsContext = buildToolsResult.FormatForPrompt()
 	}
 
+	// Detect documentation files
+	docsResult := docs.Detect(".")
+	docsContext := ""
+	if docsResult != nil {
+		docsContext = docsResult.FormatForPrompt()
+	}
+
 	// Initialize request logger
-	logger := logging.NewLogger(query, claudeMdContent, terminalContext, cfg.Model, tmuxInfo)
+	logger := logging.NewLogger(query, claudeMdContent, terminalContext, docsContext, cfg.Model, tmuxInfo)
 
 	// Interactive loop
 	reader := bufio.NewReader(os.Stdin)
@@ -105,7 +113,7 @@ func main() {
 		}
 		fmt.Printf("\nGenerating command using %s (%s)...\n", cfg.Model, tmuxContext)
 
-		result, err := claude.GenerateCommand(cfg.Model, claudeMdContent, terminalContext, buildToolsContext, query, feedback)
+		result, err := claude.GenerateCommand(cfg.Model, claudeMdContent, terminalContext, buildToolsContext, docsContext, query, feedback)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)

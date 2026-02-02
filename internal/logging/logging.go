@@ -23,8 +23,9 @@ const (
 
 // ContextSources holds the context data fed into the prompt
 type ContextSources struct {
-	ClaudeMdContent string `json:"claude_md_content"`
-	TerminalContext string `json:"terminal_context"`
+	ClaudeMdContent      string `json:"claude_md_content"`
+	TerminalContext      string `json:"terminal_context"`
+	DocumentationContext string `json:"documentation_context"`
 }
 
 // ModelInput holds the prompts sent to Claude
@@ -103,6 +104,7 @@ func NewLogger(
 	userQuery string,
 	claudeMdContent string,
 	terminalContext string,
+	docsContext string,
 	model string,
 	tmuxInfo terminal.TmuxInfo,
 ) *Logger {
@@ -124,8 +126,9 @@ func NewLogger(
 		log: &SessionLog{
 			UserQuery: userQuery,
 			ContextSources: ContextSources{
-				ClaudeMdContent: claudeMdContent,
-				TerminalContext: terminalContext,
+				ClaudeMdContent:      claudeMdContent,
+				TerminalContext:      terminalContext,
+				DocumentationContext: docsContext,
 			},
 			Iterations: []Iteration{},
 			Metadata: Metadata{
