@@ -1,20 +1,20 @@
 # Backend Structure
 
-> Last updated: 2026-02-01
+> Last updated: 2026-02-08
 
 ## Directory Structure
 
 ```
 /
-├── main.go                     # CLI entry point (287 lines)
+├── main.go                     # CLI entry point (320 lines)
 ├── go.mod                      # Module: github.com/jerryluo/cmd
 ├── go.sum                      # Dependency lock
 ├── mise.toml                   # Task runner config
-├── cmd                         # Compiled binary
+├── shell/
+│   └── cmd.fish                # Fish shell integration (Ctrl+G)
 └── internal/
     ├── buildtools/             # Build tool detection
-    │   ├── buildtools.go       # Detection orchestration
-    │   ├── parser.go           # Parser interface
+    │   ├── buildtools.go       # Detection orchestration + types
     │   ├── makefile.go         # Makefile parser
     │   ├── package_json.go     # npm scripts parser
     │   ├── mise.go             # mise tasks parser
@@ -30,15 +30,15 @@
     ├── config/
     │   └── config.go           # User configuration
     ├── docs/
-    │   ├── docs.go             # Documentation detection
-    │   ├── parser.go           # Doc file parsing
+    │   ├── docs.go             # Documentation detection + types
+    │   ├── parser.go           # Markdown parsing logic
     │   └── docs_test.go        # Tests
     ├── logging/
-    │   └── logging.go          # Session logging
+    │   └── logging.go          # Session logging + log querying
     ├── server/
-    │   ├── server.go           # HTTP server
-    │   ├── handlers.go         # API handlers
-    │   └── middleware.go       # CORS, logging
+    │   ├── server.go           # HTTP server + browser launcher
+    │   ├── handlers.go         # API handlers + sorting
+    │   └── middleware.go       # CORS middleware
     └── terminal/
         └── context.go          # tmux context capture
 ```
@@ -47,20 +47,21 @@
 
 ### Responsibilities
 
-1. **Flag Parsing**: `--model`, `--context-lines`, `--logs`, `--help`
-2. **Mode Selection**: Log viewer vs command generation
-3. **Context Gathering**: Combines all context sources
-4. **Interactive Loop**: Accept/Reject/Quit handling
-5. **Clipboard Integration**: Copy accepted commands
+1. **Flag Parsing**: `--model`, `--context-lines`, `--output`, `--logs`, `--help`
+2. **Mode Selection**: Log viewer (`--logs`) vs command generation
+3. **Context Gathering**: Combines config, tmux scrollback, build tools, docs
+4. **Interactive Loop**: Accept/Reject/Quit handling with single-key input
+5. **Output**: Clipboard copy or file write via `--output`
 
 ### Key Functions
 
 | Function | Purpose |
 |----------|---------|
 | `main()` | Entry point, orchestrates entire flow |
-| `runLogViewer()` | Starts embedded web server |
+| `runLogViewer()` | Starts embedded web server + opens browser |
 | `printUsage()` | Displays help message |
-| `readSingleKey()` | Raw terminal input for A/R/Q |
+| `printExplanation()` | Formats explanation with bullet points |
+| `readSingleKey()` | Raw terminal input for A/R/Q (via `golang.org/x/term`) |
 
 ### Embedded Assets
 
@@ -91,50 +92,52 @@ type Parser interface {
 
 | File | Parser | Commands Extracted |
 |------|--------|-------------------|
-| `Makefile` | MakefileParser | Make targets |
-| `package.json` | PackageJsonParser | npm scripts |
-| `mise.toml` | MiseParser | mise tasks |
-| `Justfile` | JustfileParser | just recipes |
-| `Taskfile.yml` | TaskfileParser | task commands |
-| `Cargo.toml` | CargoParser | cargo commands |
-| `pyproject.toml` | PyprojectParser | Python scripts |
-| `docker-compose.yml` | DockerComposeParser | Services |
+| `Makefile` | MakefileParser | Make targets (with preceding comment descriptions) |
+| `package.json` | PackageJSONParser | npm scripts (with script body as description) |
+| `mise.toml` | MiseParser | mise tasks (description or run command) |
+| `justfile` | JustfileParser | just recipes (with preceding comment descriptions) |
+| `Taskfile.yml` | TaskfileParser | task commands (with `desc` field) |
+| `Cargo.toml` | CargoParser | Standard cargo commands (build, run, test, etc.) |
+| `pyproject.toml` | PyprojectParser | PEP 621 + Poetry + PDM scripts |
+| `docker-compose.yml` | DockerComposeParser | Standard commands + per-service up |
 
 **Key Function:**
 ```go
 func Detect(dir string) *DetectionResult
+func (r *DetectionResult) FormatForPrompt() string
 ```
 
 ### `internal/claude/`
 
 Communicates with Claude CLI using JSON schema for structured output.
 
-**Key Function:**
+**Key Functions:**
 ```go
 func GenerateCommand(
     model, claudeMdContent, terminalContext,
     buildToolsContext, docsContext, userQuery, feedback string,
 ) (*GenerateResult, error)
+
+func CheckClaudeCLI() error
 ```
 
 **Claude CLI Invocation:**
 ```bash
 claude -p --model <model> --output-format json \
     --append-system-prompt <prompt> \
-    --json-schema <schema>
+    --json-schema <schema> \
+    <user_prompt>
 ```
 
-**JSON Schema Used:**
-```json
-{
-    "type": "object",
-    "properties": {
-        "command": {"type": "string"},
-        "explanation": {"type": "string"}
-    },
-    "required": ["command", "explanation"]
-}
-```
+**Response Handling:**
+1. Parse outer `ClaudeResponse` JSON (with `result`, `structured_output`, `is_error`)
+2. Prefer `structured_output` (from `--json-schema`)
+3. Fallback: extract JSON from `result` field (handles markdown code blocks)
+
+**JSON Extraction (`extractJSON`):**
+- Tries parsing as-is
+- Regex extraction from markdown code blocks
+- Brace-matching with string escape awareness
 
 ### `internal/clipboard/`
 
@@ -143,7 +146,7 @@ Platform-specific clipboard operations.
 | Platform | Tool Used |
 |----------|-----------|
 | macOS | `pbcopy` |
-| Linux | `xclip` → `xsel` fallback |
+| Linux | `xclip` (primary) → `xsel` (fallback) |
 
 ### `internal/config/`
 
@@ -153,63 +156,81 @@ Manages user preferences.
 - Config dir: `~/.config/cmd/`
 - Preferences: `~/.config/cmd/claude.md`
 
+**Constants:**
+```go
+const DefaultModel  = "opus"
+const ConfigDirName = "cmd"
+const ClaudeMdName  = "claude.md"
+```
+
 **Default claude.md:**
 ```markdown
 # Command Generation Preferences
 
 - Generate commands for macOS/zsh unless context suggests otherwise
-- Prefer modern CLI tools (ripgrep over grep, fd over find, etc.)
-- Use safe defaults (e.g., prefer interactive flags like -i)
+- Prefer modern CLI tools when available (ripgrep over grep, fd over find, etc.)
+- Use safe defaults (e.g., prefer interactive flags like -i for destructive operations)
 ```
 
 ### `internal/docs/`
 
-Detects documentation files in project.
+Detects documentation files and extracts command-related sections.
 
-**Supported Files:**
-- `README.md`
-- `CONTRIBUTING.md`
-- `.github/CONTRIBUTING.md`
-- `docs/` directory contents
-- `INSTALL.md`
-- `.github/INSTALL.md`
+**Scanned Files:** `README.md`, `CLAUDE.md`, `AGENTS.md`
+
+**Parsing Logic (`parser.go`):**
+- Finds headings matching relevant keywords (build, install, usage, setup, etc.)
+- Extracts full section content under matching headings
+- Detects standalone shell code blocks outside relevant sections
+- Tracks code fences to avoid false heading matches
+
+**Relevant Heading Keywords:**
+`build`, `development`, `dev`, `installation`, `install`, `usage`, `commands`, `cli`, `getting started`, `quick start`, `quickstart`, `running`, `run`, `setup`, `prerequisites`, `requirements`
 
 ### `internal/logging/`
 
 JSON session logging with atomic writes.
 
 **Log Location:** `~/.local/share/cmd/logs/`
+**Filename Format:** `2006-01-02T15-04-05Z.json` (UTC)
 
 **Key Features:**
-- Atomic writes (temp file + rename)
-- Thread-safe with mutex
-- Supports search and filtering
+- Atomic writes (temp file + `os.Rename`)
+- Thread-safe with `sync.Mutex`
+- Nil-safe methods (no-op if logger creation failed)
+- Supports search across query, command, and explanation fields
+- Log listing sorted by timestamp descending
 
 **Key Functions:**
 ```go
 func NewLogger(...) *Logger
 func (l *Logger) AddIteration(...)
-func (l *Logger) Finalize(status, feedback) error
+func (l *Logger) Finalize(status FinalStatus, feedback string)
 func ListLogs() ([]LogSummary, error)
 func SearchLogs(query string) ([]LogSummary, error)
+func ReadLog(id string) (*SessionLog, error)
+func ReadLogWithID(id string) (*SessionLogWithID, error)
 ```
 
 ### `internal/server/`
 
 HTTP server for log viewer.
 
-**Port:** 8765 (configurable)
+**Port:** 8765 (constant `DefaultPort`)
 
 **Routes:**
 | Route | Handler |
 |-------|---------|
-| `GET /api/v1/logs` | List logs with filtering |
-| `GET /api/v1/logs/{id}` | Get log details |
-| `GET /*` | Serve React SPA |
+| `GET /api/v1/logs` | List logs with filtering/sorting/pagination |
+| `GET /api/v1/logs/{id}` | Get full log details |
+| `GET /*` | Serve React SPA (with index.html fallback) |
 
-**Middleware:**
-- CORS headers
-- Request logging
+**Middleware:** CORS headers + JSON content type for API routes
+
+**Handler Features:**
+- `handleListLogs`: search, status/model filtering, time range, sorting (5 fields), pagination
+- `handleGetLog`: single log lookup by ID
+- `sortLogs`: bubble sort by timestamp, status, model, query, command
 
 ### `internal/terminal/`
 
@@ -228,8 +249,37 @@ func InTmux() bool
 ```
 
 **tmux Commands Used:**
-- `tmux capture-pane -p -S -N` (scrollback)
-- `tmux display-message -p` (session info)
+- `tmux capture-pane -p -S -N` (scrollback capture)
+- `tmux display-message -p #S` (session name)
+- `tmux display-message -p #W` (window name)
+- `tmux display-message -p #P` (pane index)
+
+---
+
+## Shell Integration (`shell/cmd.fish`)
+
+Fish shell function bound to Ctrl+G:
+
+```fish
+function cmd-generate --description "Generate a command with AI"
+    set -l tmpfile (mktemp /tmp/cmd-output.XXXXXX)
+    command stty sane </dev/tty 2>/dev/null
+    command cmd --output $tmpfile </dev/tty
+    if test $status -eq 0 -a -s $tmpfile
+        commandline -r (cat $tmpfile)
+    end
+    rm -f $tmpfile
+    commandline -f repaint
+end
+
+bind \cg cmd-generate
+```
+
+**Key Details:**
+- `stty sane` resets terminal from fish's raw mode
+- Reads from `/dev/tty` for proper terminal I/O
+- Uses `--output` to write to temp file, then `commandline -r` to place on prompt
+- Installed to `~/.config/fish/conf.d/cmd.fish`
 
 ---
 
@@ -240,9 +290,9 @@ github.com/jerryluo/cmd
 go 1.25.3
 
 require:
-    github.com/BurntSushi/toml v1.6.0  # TOML parsing (mise, cargo, pyproject)
+    github.com/BurntSushi/toml v1.6.0  # TOML parsing (mise, pyproject)
     golang.org/x/sys v0.40.0           # System calls
-    golang.org/x/term v0.39.0          # Terminal handling
+    golang.org/x/term v0.39.0          # Terminal raw mode
     gopkg.in/yaml.v3 v3.0.1            # YAML parsing (taskfile, docker-compose)
 ```
 
@@ -250,11 +300,11 @@ require:
 
 ## Build Tasks (`mise.toml`)
 
-| Task | Description |
-|------|-------------|
-| `build` | Build binary with embedded web assets |
-| `install` | Install to `~/.local/bin/cmd` |
-| `web-install` | Install npm dependencies |
-| `web-build` | Build React frontend |
-| `web-dev` | Start Vite dev server |
-| `build-all` | Build backend + frontend |
+| Task | Depends On | Description |
+|------|------------|-------------|
+| `build` | `web-build` | Build binary with embedded web assets (`go build -o cmd .`) |
+| `install` | `web-build` | Install to `~/.local/bin/cmd` + fish integration |
+| `uninstall` | | Remove binary and fish integration |
+| `web-install` | | Install npm dependencies (`npm install` in `web/`) |
+| `web-build` | | Build React frontend (`npm run build` in `web/`) |
+| `web-dev` | | Start Vite dev server (`npm run dev` in `web/`) |

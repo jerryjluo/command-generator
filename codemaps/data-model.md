@@ -1,6 +1,6 @@
 # Data Models
 
-> Last updated: 2026-02-01
+> Last updated: 2026-02-08
 
 ## Entity Relationship Diagram
 
@@ -14,7 +14,6 @@ erDiagram
     Metadata ||--o| TmuxInfo : has
 
     SessionLog {
-        string id PK
         string user_query
     }
 
@@ -28,6 +27,7 @@ erDiagram
         timestamp timestamp
         string model
         FinalStatus final_status
+        string final_feedback
         int iteration_count
     }
 
@@ -66,7 +66,14 @@ type Response struct {
     Explanation string `json:"explanation"`
 }
 
-// Result of a generation call
+// Outer JSON response from claude CLI
+type ClaudeResponse struct {
+    Result           string    `json:"result"`
+    StructuredOutput *Response `json:"structured_output"`
+    Error            bool      `json:"is_error"`
+}
+
+// Result of a generation call (includes prompts for logging)
 type GenerateResult struct {
     Response     *Response
     SystemPrompt string
@@ -80,11 +87,16 @@ type GenerateResult struct {
 ```go
 // Full session log stored to disk
 type SessionLog struct {
-    ID             string         `json:"id"`
     UserQuery      string         `json:"user_query"`
     ContextSources ContextSources `json:"context_sources"`
     Iterations     []Iteration    `json:"iterations"`
     Metadata       Metadata       `json:"metadata"`
+}
+
+// Wrapper that adds ID for API responses
+type SessionLogWithID struct {
+    ID string `json:"id"`
+    SessionLog
 }
 
 // Context gathered before generation
@@ -115,11 +127,12 @@ type ModelOutput struct {
 
 // Session metadata
 type Metadata struct {
-    Timestamp      time.Time   `json:"timestamp"`
-    Model          string      `json:"model"`
-    FinalStatus    FinalStatus `json:"final_status"`
-    IterationCount int         `json:"iteration_count"`
-    TmuxInfo       TmuxInfo    `json:"tmux_info"`
+    Timestamp      time.Time       `json:"timestamp"`
+    Model          string          `json:"model"`
+    FinalStatus    FinalStatus     `json:"final_status"`
+    FinalFeedback  string          `json:"final_feedback,omitempty"`
+    IterationCount int             `json:"iteration_count"`
+    TmuxInfo       terminal.TmuxInfo `json:"tmux_info"`
 }
 
 type FinalStatus string // "accepted", "rejected", "quit"
@@ -133,6 +146,7 @@ type LogSummary struct {
     Timestamp      time.Time   `json:"timestamp"`
     IterationCount int         `json:"iteration_count"`
     CommandPreview string      `json:"command_preview"`
+    TmuxSession    string      `json:"tmux_session,omitempty"`
 }
 ```
 
@@ -158,20 +172,20 @@ type Parser interface {
 
 // Detected build tool
 type Tool struct {
-    Name     string    // e.g., "Makefile", "npm"
-    File     string    // Path to config file
-    Commands []Command
+    Name     string    `json:"name"`
+    File     string    `json:"file"`
+    Commands []Command `json:"commands"`
 }
 
 // Available command in a build tool
 type Command struct {
-    Name        string
-    Description string
+    Name        string `json:"name"`
+    Description string `json:"description,omitempty"`
 }
 
 // Result of directory scan
 type DetectionResult struct {
-    Tools []*Tool
+    Tools []Tool `json:"tools"`
 }
 ```
 
@@ -187,18 +201,20 @@ type Config struct {
 ### Docs Package (`internal/docs/`)
 
 ```go
-type DocFile struct {
-    Path    string
-    Content string
-    Size    int64
+// Extracted command-related section from documentation
+type Section struct {
+    Heading string // The heading text
+    Content string // Full section content including code blocks
+    Source  string // Source file (README.md, CLAUDE.md, etc.)
 }
 
-type DetectionResult struct {
-    Files []DocFile
+// All extracted documentation sections
+type Result struct {
+    Sections []Section
 }
 ```
 
-## TypeScript Interfaces (`web/src/types/`)
+## TypeScript Interfaces (`web/src/types/log.ts`)
 
 ```typescript
 interface TmuxInfo {
@@ -236,6 +252,7 @@ interface Metadata {
     timestamp: string;
     model: string;
     final_status: 'accepted' | 'rejected' | 'quit';
+    final_feedback?: string;
     iteration_count: number;
     tmux_info: TmuxInfo;
 }
@@ -256,6 +273,14 @@ interface LogSummary {
     timestamp: string;
     iteration_count: number;
     command_preview: string;
+    tmux_session?: string;
+}
+
+interface LogListResponse {
+    logs: LogSummary[];
+    total: number;
+    limit: number;
+    offset: number;
 }
 
 interface FilterParams {
@@ -285,7 +310,7 @@ Used with `claude --json-schema` for structured output:
         },
         "explanation": {
             "type": "string",
-            "description": "Breakdown of the tools and flags used"
+            "description": "A breakdown explaining each tool, argument, and flag used"
         }
     },
     "required": ["command", "explanation"]
@@ -294,26 +319,27 @@ Used with `claude --json-schema` for structured output:
 
 ## Storage Format
 
-### Log File (`~/.local/share/cmd/logs/{timestamp-id}.json`)
+### Log File (`~/.local/share/cmd/logs/{timestamp}.json`)
+
+Filename format: `2026-02-01T14-30-45Z.json` (UTC timestamp, colons replaced with hyphens)
 
 ```json
 {
-    "id": "2026-02-01T10-30-00-abc123",
     "user_query": "list all go files recursively",
     "context_sources": {
         "claude_md_content": "# Preferences\n- Use modern CLI tools",
         "terminal_context": "$ pwd\n/Users/user/project\n$ ls\ngo.mod  main.go",
-        "documentation_context": "# README\nThis is a Go project..."
+        "documentation_context": "From README.md:\n## Build Commands..."
     },
     "iterations": [
         {
             "feedback": "",
             "model_input": {
                 "system_prompt": "You are a CLI command generator...",
-                "user_prompt": "Generate: list all go files recursively"
+                "user_prompt": "Terminal context...\nUser request: list all go files..."
             },
             "model_output": {
-                "raw_response": "{\"command\":\"fd -e go\",\"explanation\":\"...\"}",
+                "raw_response": "{\"result\":\"...\",\"structured_output\":{...}}",
                 "command": "fd -e go",
                 "explanation": "Uses fd to find files with .go extension"
             },
@@ -322,7 +348,7 @@ Used with `claude --json-schema` for structured output:
     ],
     "metadata": {
         "timestamp": "2026-02-01T10:30:00Z",
-        "model": "claude-sonnet-4-20250514",
+        "model": "opus",
         "final_status": "accepted",
         "iteration_count": 1,
         "tmux_info": {

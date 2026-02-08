@@ -1,14 +1,15 @@
 # cmd
 
-> Last updated: 2026-02-01
+> Last updated: 2026-02-08
 
-A CLI tool that generates shell commands from natural language using Claude AI.
+Generate shell commands from natural language using Claude AI. Press **Ctrl+G** in fish shell and describe what you need — the accepted command is placed directly on your prompt, ready to edit or execute.
 
-Describe what you want to do in plain English, and `cmd` generates the appropriate shell command with an explanation. Refine it iteratively with feedback until you get exactly what you need.
+`cmd` can also be used standalone: pass a query as an argument or run it with no arguments for an interactive prompt. It copies the accepted command to your clipboard.
 
 ## Features
 
-- **Natural language to shell commands** - Just describe what you want
+- **Inline fish shell integration** - Press Ctrl+G to generate a command that lands directly on your prompt line — the primary way to use `cmd`
+- **Standalone CLI** - Also works as `cmd "your query"` or `cmd` with an interactive prompt, copying to clipboard
 - **Context-aware** - Automatically detects your terminal history (tmux) and available build tools
 - **Iterative refinement** - Provide feedback to adjust the generated command
 - **Build tool detection** - Recognizes Makefile, package.json, mise, just, task, cargo, pyproject.toml, and docker-compose
@@ -33,19 +34,38 @@ cd command_generator
 # Install CLI only
 mise run install-cli
 
-# Or install everything (CLI + web viewer)
+# Or install everything (CLI + web viewer + fish shell integration)
 npm install --prefix web
 mise run install
 ```
 
 The binary is installed to `~/.local/bin/cmd`. Make sure this is in your PATH.
 
+Fish shell integration is automatically installed to `~/.config/fish/conf.d/cmd.fish`. Restart fish or run `source ~/.config/fish/conf.d/cmd.fish` to activate.
+
 ## Usage
 
-### Basic Usage
+### Fish Shell (Ctrl+G)
+
+The primary way to use `cmd`. Press **Ctrl+G** anywhere in fish to describe what you need. Once you accept, the generated command is placed directly on your prompt line — ready to review, edit, or execute. Press Ctrl+C at any point to cancel and return to your prompt.
 
 ```bash
+# Activate (already done if you ran mise run install)
+source shell/cmd.fish
+
+# Or manually
+cp shell/cmd.fish ~/.config/fish/conf.d/cmd.fish
+```
+
+### Standalone CLI
+
+```bash
+# Pass a query as an argument
 cmd "find all Python files modified in the last week"
+
+# Or run with no arguments for an interactive prompt
+cmd
+# What do you need? find all Python files modified in the last week
 ```
 
 Output:
@@ -65,11 +85,12 @@ the last 7 days, starting from the current directory.
 ### Options
 
 ```bash
-cmd [options] "your request"
+cmd [options] [query]
 
 Options:
-  --model <model>         Claude model to use (default: claude-sonnet-4-20250514)
+  --model <model>         Claude model to use (default: opus)
   --context-lines <n>     Lines of terminal history to include (default: 100)
+  --output <file>         Write accepted command to file instead of clipboard
   --logs                  Open the web log viewer
   --help                  Show help
 ```
@@ -119,13 +140,14 @@ Example preferences:
 
 ## How It Works
 
-1. Captures your recent terminal history (requires tmux)
-2. Detects build tools in your current directory
-3. Detects documentation files (README, CONTRIBUTING, etc.)
-4. Sends context + your request to Claude with a JSON schema
-5. Displays the generated command and explanation
-6. Loops for feedback until you accept or quit
-7. Copies accepted command to clipboard and logs the session
+1. Gets your query (from arguments or interactive prompt)
+2. Captures your recent terminal history (requires tmux)
+3. Detects build tools in your current directory
+4. Detects documentation files (README, CONTRIBUTING, etc.)
+5. Sends context + your request to Claude with a JSON schema
+6. Displays the generated command and explanation
+7. Loops for feedback until you accept or quit
+8. Copies accepted command to clipboard (or writes to `--output` file) and logs the session
 
 ## Development
 

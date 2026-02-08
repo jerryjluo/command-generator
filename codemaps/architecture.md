@@ -1,6 +1,6 @@
 # Architecture Overview
 
-> Last updated: 2026-02-01
+> Last updated: 2026-02-08
 
 ## System Overview
 
@@ -8,20 +8,27 @@
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│                         User Interface                               │
+│                         User Interface                              │
 ├──────────────────────────────┬──────────────────────────────────────┤
 │       CLI (main.go)          │      Web Viewer (React SPA)          │
 │  - Natural language input    │  - Log browsing & filtering          │
 │  - Interactive A/R/Q loop    │  - Session detail viewing            │
-│  - Clipboard integration     │  - Served on localhost:8765          │
-└──────────────┬───────────────┴──────────────────┬───────────────────┘
-               │                                   │
-               ▼                                   ▼
+│  - Clipboard / file output   │  - Served on localhost:8765          │
+├──────────────────────────────┘──────────────────────────────────────┤
+│       Shell Integration (fish)                                      │
+│  - Ctrl+G keybinding                                                │
+│  - Writes to temp file via --output, places on fish prompt          │
+└──────────────┬──────────────────────────────────────────────────────┘
+               │
+               ▼
 ┌──────────────────────────────────────────────────────────────────────┐
 │                          Go Backend                                   │
 ├─────────────┬─────────────┬─────────────┬─────────────┬─────────────┤
 │   claude/   │ buildtools/ │  terminal/  │   logging/  │   server/   │
 │  API client │  8 parsers  │ tmux context│  JSON logs  │  HTTP API   │
+├─────────────┼─────────────┤             ├─────────────┼─────────────┤
+│   config/   │   docs/     │             │  clipboard/ │             │
+│  user prefs │ doc parsing │             │  copy cmd   │             │
 └──────┬──────┴──────┬──────┴──────┬──────┴──────┬──────┴──────┬──────┘
        │             │             │             │             │
        ▼             ▼             ▼             ▼             ▼
@@ -44,10 +51,16 @@ User Input → Load Config → Capture Context → Call Claude → Display → L
                              + docs
 ```
 
+### Shell Integration Flow (Fish)
+
+```
+Ctrl+G → stty sane → cmd --output /tmp/cmd-output.XXXX → Read temp file → commandline -r
+```
+
 ### Log Viewer Flow
 
 ```
-cmd --logs → Start Server → Embed React → Serve API → Display Logs
+cmd --logs → Start Server → Embed React → Serve API → Open Browser → Display Logs
                   │              │            │
                   ▼              ▼            ▼
             port 8765     web/dist/*    /api/v1/logs
@@ -70,7 +83,7 @@ server/handlers.go
 └── internal/logging      # Read/search logs
 
 logging/logging.go
-└── internal/terminal     # Store tmux info
+└── internal/terminal     # TmuxInfo type
 ```
 
 ## Technology Stack
@@ -79,29 +92,32 @@ logging/logging.go
 |-------|------------|
 | CLI | Go 1.25.3 |
 | Build Runner | mise |
-| Frontend | React 19 + TypeScript + Vite |
-| Styling | Tailwind CSS |
+| Frontend | React 19 + TypeScript + Vite 7 |
+| Styling | Tailwind CSS 4 |
+| Routing | React Router 7 |
 | API | REST (Go net/http) |
-| Storage | JSON files |
+| Storage | JSON files on disk |
 | External | `claude` CLI tool |
+| Shell | Fish shell integration (Ctrl+G) |
 
 ## Key Configuration Paths
 
 | Path | Purpose |
 |------|---------|
-| `~/.config/cmd/claude.md` | User preferences |
-| `~/.local/share/cmd/logs/` | Session logs |
+| `~/.config/cmd/claude.md` | User preferences (prepended to system prompt) |
+| `~/.local/share/cmd/logs/` | Session logs (JSON files) |
 | `~/.local/bin/cmd` | Installed binary |
+| `~/.config/fish/conf.d/cmd.fish` | Fish shell integration (Ctrl+G binding) |
 
 ## Build Process
 
 ```
 mise run build
        │
-       ├── 1. web-build (npm run build)
+       ├── 1. web-build (npm run build in web/)
        │      └── Compiles React → web/dist/
        │
-       └── 2. go build
+       └── 2. go build -o cmd .
               └── Embeds web/dist/ via //go:embed
               └── Outputs single binary: ./cmd
 ```
@@ -110,5 +126,6 @@ mise run build
 
 - **Claude API**: Via `claude` CLI subprocess with `--json-schema` for structured output
 - **Clipboard**: Platform-specific (`pbcopy` on macOS, `xclip`/`xsel` on Linux)
-- **Browser**: Platform-specific (`open` on macOS, `xdg-open` on Linux)
-- **Terminal**: `tmux capture-pane` for context capture
+- **Browser**: Platform-specific (`open` on macOS, `xdg-open` on Linux, `cmd /c start` on Windows)
+- **Terminal**: `tmux capture-pane` for scrollback, `tmux display-message` for session info
+- **Shell**: Fish shell function `cmd-generate` bound to `\cg` (Ctrl+G)
