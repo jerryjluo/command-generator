@@ -7,10 +7,11 @@ depends = ["web-build"]
 run = "go build -o cmd ."
 
 [tasks.uninstall]
-description = "Remove the globally installed binary"
+description = "Remove the globally installed binary and shell integration"
 run = """
 rm -f ~/.local/bin/cmd
-echo "Removed cmd from ~/.local/bin"
+rm -f ~/.config/fish/conf.d/cmd.fish
+echo "Removed cmd from ~/.local/bin and fish integration"
 """
 
 [tasks.web-install]
@@ -35,5 +36,8 @@ run = """
 mkdir -p ~/.local/bin
 go build -o ~/.local/bin/cmd .
 echo "Installed cmd to ~/.local/bin/cmd"
-echo "Make sure ~/.local/bin is in your PATH"
+mkdir -p ~/.config/fish/conf.d
+cp shell/cmd.fish ~/.config/fish/conf.d/cmd.fish
+echo "Installed fish integration to ~/.config/fish/conf.d/cmd.fish"
+echo "Restart fish or run: source ~/.config/fish/conf.d/cmd.fish"
 """

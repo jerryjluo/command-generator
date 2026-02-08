@@ -34,6 +34,7 @@ func main() {
 	contextLines := flag.Int("context-lines", terminal.ScrollbackLines, "Number of tmux scrollback lines to capture")
 	help := flag.Bool("help", false, "Show help")
 	logs := flag.Bool("logs", false, "Launch web-based log viewer")
+	output := flag.String("output", "", "Write accepted command to file instead of clipboard")
 	flag.Parse()
 
 	if *help {
@@ -47,14 +48,32 @@ func main() {
 		return
 	}
 
-	// Get the query from remaining arguments
+	// Handle Ctrl+C for clean exit (especially when launched from shell key bindings)
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, os.Interrupt)
+	go func() {
+		<-sigChan
+		fmt.Println()
+		os.Exit(130)
+	}()
+
+	// Get the query from arguments or interactive prompt
+	reader := bufio.NewReader(os.Stdin)
 	args := flag.Args()
+	var query string
 	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "Error: No query provided")
-		printUsage()
-		os.Exit(1)
+		fmt.Print("What do you need? ")
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			os.Exit(1)
+		}
+		query = strings.TrimSpace(line)
+		if query == "" {
+			os.Exit(0)
+		}
+	} else {
+		query = strings.Join(args, " ")
 	}
-	query := strings.Join(args, " ")
 
 	// Check claude CLI is available
 	if err := claude.CheckClaudeCLI(); err != nil {
@@ -104,7 +123,6 @@ func main() {
 	logger := logging.NewLogger(query, claudeMdContent, terminalContext, docsContext, cfg.Model, tmuxInfo)
 
 	// Interactive loop
-	reader := bufio.NewReader(os.Stdin)
 	feedback := ""
 
 	for {
@@ -148,12 +166,19 @@ func main() {
 		switch key {
 		case 'a', 'A':
 			logger.Finalize(logging.StatusAccepted, "")
-			// Copy to clipboard
-			if err := clipboard.Copy(result.Response.Command); err != nil {
-				fmt.Fprintf(os.Stderr, "Warning: Could not copy to clipboard: %v\n", err)
-				fmt.Printf("Command: %s\n", result.Response.Command)
+			if *output != "" {
+				if err := os.WriteFile(*output, []byte(result.Response.Command), 0644); err != nil {
+					fmt.Fprintf(os.Stderr, "Error writing to %s: %v\n", *output, err)
+					os.Exit(1)
+				}
 			} else {
-				fmt.Println("Command copied to clipboard!")
+				// Copy to clipboard
+				if err := clipboard.Copy(result.Response.Command); err != nil {
+					fmt.Fprintf(os.Stderr, "Warning: Could not copy to clipboard: %v\n", err)
+					fmt.Printf("Command: %s\n", result.Response.Command)
+				} else {
+					fmt.Println("Command copied to clipboard!")
+				}
 			}
 			os.Exit(0)
 
@@ -234,19 +259,27 @@ func printUsage() {
 	fmt.Println("cmd - Generate CLI commands from natural language")
 	fmt.Println()
 	fmt.Println("Usage:")
-	fmt.Println("  cmd [options] <query>")
+	fmt.Println("  cmd [options] [query]")
 	fmt.Println("  cmd --logs")
+	fmt.Println()
+	fmt.Println("If no query is provided, an interactive prompt is shown.")
 	fmt.Println()
 	fmt.Println("Options:")
 	fmt.Println("  --model <model>       Claude model to use (default: opus)")
 	fmt.Println("  --context-lines <n>   Number of tmux scrollback lines to capture (default: 100)")
+	fmt.Println("  --output <file>       Write accepted command to file instead of clipboard")
 	fmt.Println("  --logs                Launch web-based log viewer")
 	fmt.Println("  --help                Show this help message")
 	fmt.Println()
 	fmt.Println("Examples:")
 	fmt.Println("  cmd \"find all large files modified today\"")
 	fmt.Println("  cmd --model sonnet \"compress all images in current directory\"")
+	fmt.Println("  cmd --output /tmp/cmd.txt")
 	fmt.Println("  cmd --logs")
+	fmt.Println()
+	fmt.Println("Shell integration:")
+	fmt.Println("  Fish: Press Ctrl+G to generate a command directly on your prompt")
+	fmt.Println("  Install: mise run install (includes fish integration)")
 	fmt.Println()
 	fmt.Println("Configuration:")
 	fmt.Println("  ~/.config/cmd/claude.md - Customize command generation preferences")
