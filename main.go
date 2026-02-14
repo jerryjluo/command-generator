@@ -23,6 +23,7 @@ import (
 	"github.com/jerryluo/cmd/internal/logging"
 	"github.com/jerryluo/cmd/internal/server"
 	"github.com/jerryluo/cmd/internal/terminal"
+	"github.com/jerryluo/cmd/internal/tui"
 )
 
 //go:embed web/dist
@@ -34,12 +35,19 @@ func main() {
 	contextLines := flag.Int("context-lines", terminal.ScrollbackLines, "Number of tmux scrollback lines to capture")
 	help := flag.Bool("help", false, "Show help")
 	logs := flag.Bool("logs", false, "Launch web-based log viewer")
+	logTUI := flag.Bool("log-tui", false, "Launch terminal-based log viewer")
 	output := flag.String("output", "", "Write accepted command to file instead of clipboard")
 	flag.Parse()
 
 	if *help {
 		printUsage()
 		os.Exit(0)
+	}
+
+	// Handle --log-tui flag
+	if *logTUI {
+		tui.Run()
+		return
 	}
 
 	// Handle --logs flag
@@ -261,6 +269,7 @@ func printUsage() {
 	fmt.Println("Usage:")
 	fmt.Println("  cmd [options] [query]")
 	fmt.Println("  cmd --logs")
+	fmt.Println("  cmd --log-tui")
 	fmt.Println()
 	fmt.Println("If no query is provided, an interactive prompt is shown.")
 	fmt.Println()
@@ -269,6 +278,7 @@ func printUsage() {
 	fmt.Println("  --context-lines <n>   Number of tmux scrollback lines to capture (default: 100)")
 	fmt.Println("  --output <file>       Write accepted command to file instead of clipboard")
 	fmt.Println("  --logs                Launch web-based log viewer")
+	fmt.Println("  --log-tui             Launch terminal-based log viewer")
 	fmt.Println("  --help                Show this help message")
 	fmt.Println()
 	fmt.Println("Examples:")
@@ -276,6 +286,7 @@ func printUsage() {
 	fmt.Println("  cmd --model sonnet \"compress all images in current directory\"")
 	fmt.Println("  cmd --output /tmp/cmd.txt")
 	fmt.Println("  cmd --logs")
+	fmt.Println("  cmd --log-tui")
 	fmt.Println()
 	fmt.Println("Shell integration:")
 	fmt.Println("  Fish: Press Ctrl+G to generate a command directly on your prompt")
