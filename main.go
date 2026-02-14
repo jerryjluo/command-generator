@@ -2,16 +2,11 @@ package main
 
 import (
 	"bufio"
-	"context"
-	"embed"
 	"flag"
 	"fmt"
-	"io/fs"
 	"os"
 	"os/signal"
 	"strings"
-	"syscall"
-	"time"
 
 	"golang.org/x/term"
 
@@ -21,21 +16,16 @@ import (
 	"github.com/jerryluo/cmd/internal/config"
 	"github.com/jerryluo/cmd/internal/docs"
 	"github.com/jerryluo/cmd/internal/logging"
-	"github.com/jerryluo/cmd/internal/server"
 	"github.com/jerryluo/cmd/internal/terminal"
 	"github.com/jerryluo/cmd/internal/tui"
 )
-
-//go:embed web/dist
-var webAssets embed.FS
 
 func main() {
 	// Parse flags
 	model := flag.String("model", "", "Claude model to use (default: opus)")
 	contextLines := flag.Int("context-lines", terminal.ScrollbackLines, "Number of tmux scrollback lines to capture")
 	help := flag.Bool("help", false, "Show help")
-	logs := flag.Bool("logs", false, "Launch web-based log viewer")
-	logTUI := flag.Bool("log-tui", false, "Launch terminal-based log viewer")
+	logs := flag.Bool("logs", false, "Launch log viewer")
 	output := flag.String("output", "", "Write accepted command to file instead of clipboard")
 	flag.Parse()
 
@@ -44,15 +34,9 @@ func main() {
 		os.Exit(0)
 	}
 
-	// Handle --log-tui flag
-	if *logTUI {
-		tui.Run()
-		return
-	}
-
 	// Handle --logs flag
 	if *logs {
-		runLogViewer()
+		tui.Run()
 		return
 	}
 
@@ -221,55 +205,12 @@ func main() {
 	}
 }
 
-// runLogViewer starts the web-based log viewer
-func runLogViewer() {
-	// Extract the embedded web/dist filesystem
-	distFS, err := fs.Sub(webAssets, "web/dist")
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error accessing embedded web assets: %v\n", err)
-		os.Exit(1)
-	}
-
-	srv := server.NewServer(server.DefaultPort, distFS)
-	url := srv.URL()
-
-	// Handle graceful shutdown
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-
-	// Start server in background
-	go func() {
-		fmt.Printf("Starting log viewer at %s\n", url)
-		fmt.Println("Press Ctrl+C to stop")
-		if err := srv.Start(); err != nil {
-			fmt.Fprintf(os.Stderr, "Server error: %v\n", err)
-			os.Exit(1)
-		}
-	}()
-
-	// Open browser
-	if err := server.OpenBrowser(url); err != nil {
-		fmt.Fprintf(os.Stderr, "Could not open browser: %v\n", err)
-		fmt.Printf("Please open %s in your browser\n", url)
-	}
-
-	// Wait for shutdown signal
-	<-sigChan
-	fmt.Println("\nShutting down...")
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	srv.Shutdown(ctx)
-	fmt.Println("Server stopped")
-}
-
 func printUsage() {
 	fmt.Println("cmd - Generate CLI commands from natural language")
 	fmt.Println()
 	fmt.Println("Usage:")
 	fmt.Println("  cmd [options] [query]")
 	fmt.Println("  cmd --logs")
-	fmt.Println("  cmd --log-tui")
 	fmt.Println()
 	fmt.Println("If no query is provided, an interactive prompt is shown.")
 	fmt.Println()
@@ -277,8 +218,7 @@ func printUsage() {
 	fmt.Println("  --model <model>       Claude model to use (default: opus)")
 	fmt.Println("  --context-lines <n>   Number of tmux scrollback lines to capture (default: 100)")
 	fmt.Println("  --output <file>       Write accepted command to file instead of clipboard")
-	fmt.Println("  --logs                Launch web-based log viewer")
-	fmt.Println("  --log-tui             Launch terminal-based log viewer")
+	fmt.Println("  --logs                Launch log viewer")
 	fmt.Println("  --help                Show this help message")
 	fmt.Println()
 	fmt.Println("Examples:")
@@ -286,7 +226,6 @@ func printUsage() {
 	fmt.Println("  cmd --model sonnet \"compress all images in current directory\"")
 	fmt.Println("  cmd --output /tmp/cmd.txt")
 	fmt.Println("  cmd --logs")
-	fmt.Println("  cmd --log-tui")
 	fmt.Println()
 	fmt.Println("Shell integration:")
 	fmt.Println("  Fish: Press Ctrl+G to generate a command directly on your prompt")

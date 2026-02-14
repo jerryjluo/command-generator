@@ -1,6 +1,6 @@
 # Data Models
 
-> Last updated: 2026-02-08
+> Last updated: 2026-02-13
 
 ## Entity Relationship Diagram
 
@@ -211,88 +211,6 @@ type Section struct {
 // All extracted documentation sections
 type Result struct {
     Sections []Section
-}
-```
-
-## TypeScript Interfaces (`web/src/types/log.ts`)
-
-```typescript
-interface TmuxInfo {
-    in_tmux: boolean;
-    session?: string;
-    window?: string;
-    pane?: string;
-}
-
-interface ModelInput {
-    system_prompt: string;
-    user_prompt: string;
-}
-
-interface ModelOutput {
-    raw_response: string;
-    command: string;
-    explanation: string;
-}
-
-interface Iteration {
-    feedback: string;
-    model_input: ModelInput;
-    model_output: ModelOutput;
-    timestamp: string;
-}
-
-interface ContextSources {
-    claude_md_content: string;
-    terminal_context: string;
-    documentation_context: string;
-}
-
-interface Metadata {
-    timestamp: string;
-    model: string;
-    final_status: 'accepted' | 'rejected' | 'quit';
-    final_feedback?: string;
-    iteration_count: number;
-    tmux_info: TmuxInfo;
-}
-
-interface SessionLog {
-    id: string;
-    user_query: string;
-    context_sources: ContextSources;
-    iterations: Iteration[];
-    metadata: Metadata;
-}
-
-interface LogSummary {
-    id: string;
-    user_query: string;
-    final_status: 'accepted' | 'rejected' | 'quit';
-    model: string;
-    timestamp: string;
-    iteration_count: number;
-    command_preview: string;
-    tmux_session?: string;
-}
-
-interface LogListResponse {
-    logs: LogSummary[];
-    total: number;
-    limit: number;
-    offset: number;
-}
-
-interface FilterParams {
-    status?: string;
-    model?: string;
-    search?: string;
-    from?: string;
-    to?: string;
-    sort?: string;
-    order?: 'asc' | 'desc';
-    limit?: number;
-    offset?: number;
 }
 ```
 

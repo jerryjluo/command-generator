@@ -2,8 +2,7 @@
 go = "1.25"
 
 [tasks.build]
-description = "Build the binary (with embedded web assets)"
-depends = ["web-build"]
+description = "Build the binary"
 run = "go build -o cmd ."
 
 [tasks.uninstall]
@@ -14,24 +13,8 @@ rm -f ~/.config/fish/conf.d/cmd.fish
 echo "Removed cmd from ~/.local/bin and fish integration"
 """
 
-[tasks.web-install]
-description = "Install web frontend dependencies"
-dir = "web"
-run = "npm install"
-
-[tasks.web-build]
-description = "Build the web frontend"
-dir = "web"
-run = "npm run build"
-
-[tasks.web-dev]
-description = "Start web frontend dev server"
-dir = "web"
-run = "npm run dev"
-
 [tasks.install]
 description = "Build and install CLI globally to ~/.local/bin"
-depends = ["web-build"]
 run = """
 mkdir -p ~/.local/bin
 go build -o ~/.local/bin/cmd .

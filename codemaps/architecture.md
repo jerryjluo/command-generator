@@ -1,19 +1,19 @@
 # Architecture Overview
 
-> Last updated: 2026-02-08
+> Last updated: 2026-02-13
 
 ## System Overview
 
-**command_generator** (`cmd`) is a CLI tool that generates shell commands from natural language using Claude AI. It combines a Go backend for CLI operations with a React frontend for log visualization.
+**command_generator** (`cmd`) is a CLI tool that generates shell commands from natural language using Claude AI. It includes a TUI-based log viewer for browsing generation history.
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
 │                         User Interface                              │
 ├──────────────────────────────┬──────────────────────────────────────┤
-│       CLI (main.go)          │      Web Viewer (React SPA)          │
+│       CLI (main.go)          │      TUI Log Viewer (Bubbletea)      │
 │  - Natural language input    │  - Log browsing & filtering          │
 │  - Interactive A/R/Q loop    │  - Session detail viewing            │
-│  - Clipboard / file output   │  - Served on localhost:8765          │
+│  - Clipboard / file output   │  - Launched via cmd --logs           │
 ├──────────────────────────────┘──────────────────────────────────────┤
 │       Shell Integration (fish)                                      │
 │  - Ctrl+G keybinding                                                │
@@ -24,14 +24,14 @@
 ┌──────────────────────────────────────────────────────────────────────┐
 │                          Go Backend                                   │
 ├─────────────┬─────────────┬─────────────┬─────────────┬─────────────┤
-│   claude/   │ buildtools/ │  terminal/  │   logging/  │   server/   │
-│  API client │  8 parsers  │ tmux context│  JSON logs  │  HTTP API   │
+│   claude/   │ buildtools/ │  terminal/  │   logging/  │    tui/     │
+│  API client │  8 parsers  │ tmux context│  JSON logs  │  Bubbletea  │
 ├─────────────┼─────────────┤             ├─────────────┼─────────────┤
 │   config/   │   docs/     │             │  clipboard/ │             │
 │  user prefs │ doc parsing │             │  copy cmd   │             │
-└──────┬──────┴──────┬──────┴──────┬──────┴──────┬──────┴──────┬──────┘
-       │             │             │             │             │
-       ▼             ▼             ▼             ▼             ▼
+└──────┬──────┴──────┬──────┴──────┬──────┴──────┬──────┴─────────────┘
+       │             │             │             │
+       ▼             ▼             ▼             ▼
 ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌─────────────────────┐
 │ claude CLI  │ │ Build files │ │    tmux     │ │ ~/.local/share/cmd/ │
 │  (external) │ │ in project  │ │   session   │ │       logs/         │
@@ -60,10 +60,10 @@ Ctrl+G → stty sane → cmd --output /tmp/cmd-output.XXXX → Read temp file �
 ### Log Viewer Flow
 
 ```
-cmd --logs → Start Server → Embed React → Serve API → Open Browser → Display Logs
-                  │              │            │
-                  ▼              ▼            ▼
-            port 8765     web/dist/*    /api/v1/logs
+cmd --logs → Bubbletea TUI → Load logs from disk → List/Detail views
+                                    │
+                                    ▼
+                          ~/.local/share/cmd/logs/*.json
 ```
 
 ## Package Dependencies
@@ -76,11 +76,12 @@ main.go
 ├── internal/config       # User preferences
 ├── internal/docs         # Documentation detection
 ├── internal/logging      # Session logging
-├── internal/server       # HTTP server + API
-└── internal/terminal     # tmux context capture
+├── internal/terminal     # tmux context capture
+└── internal/tui          # TUI log viewer
 
-server/handlers.go
-└── internal/logging      # Read/search logs
+tui/
+├── internal/logging      # Read/search logs
+└── internal/clipboard    # Copy to clipboard
 
 logging/logging.go
 └── internal/terminal     # TmuxInfo type
@@ -92,10 +93,7 @@ logging/logging.go
 |-------|------------|
 | CLI | Go 1.25.3 |
 | Build Runner | mise |
-| Frontend | React 19 + TypeScript + Vite 7 |
-| Styling | Tailwind CSS 4 |
-| Routing | React Router 7 |
-| API | REST (Go net/http) |
+| TUI | Bubbletea + Bubbles + Lipgloss (Charm) |
 | Storage | JSON files on disk |
 | External | `claude` CLI tool |
 | Shell | Fish shell integration (Ctrl+G) |
@@ -114,11 +112,7 @@ logging/logging.go
 ```
 mise run build
        │
-       ├── 1. web-build (npm run build in web/)
-       │      └── Compiles React → web/dist/
-       │
-       └── 2. go build -o cmd .
-              └── Embeds web/dist/ via //go:embed
+       └── go build -o cmd .
               └── Outputs single binary: ./cmd
 ```
 
@@ -126,6 +120,5 @@ mise run build
 
 - **Claude API**: Via `claude` CLI subprocess with `--json-schema` for structured output
 - **Clipboard**: Platform-specific (`pbcopy` on macOS, `xclip`/`xsel` on Linux)
-- **Browser**: Platform-specific (`open` on macOS, `xdg-open` on Linux, `cmd /c start` on Windows)
 - **Terminal**: `tmux capture-pane` for scrollback, `tmux display-message` for session info
 - **Shell**: Fish shell function `cmd-generate` bound to `\cg` (Ctrl+G)

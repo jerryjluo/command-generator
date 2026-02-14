@@ -1,6 +1,6 @@
 # cmd
 
-> Last updated: 2026-02-08
+> Last updated: 2026-02-13
 
 Generate shell commands from natural language using Claude AI. Press **Ctrl+G** in fish shell and describe what you need — the accepted command is placed directly on your prompt, ready to edit or execute.
 
@@ -15,14 +15,13 @@ Generate shell commands from natural language using Claude AI. Press **Ctrl+G** 
 - **Build tool detection** - Recognizes Makefile, package.json, mise, just, task, cargo, pyproject.toml, and docker-compose
 - **Documentation detection** - Includes README, CONTRIBUTING, and other docs as context
 - **Session logging** - All generations are logged for review
-- **Web log viewer** - Browse your generation history in a web interface
+- **TUI log viewer** - Browse your generation history in a terminal interface
 
 ## Prerequisites
 
 - [Go 1.25+](https://go.dev/dl/)
 - [mise](https://mise.jdx.dev/) (task runner)
 - [Claude Code CLI](https://claude.ai/code) (`claude` command must be available)
-- [Node.js 18+](https://nodejs.org/) (for web frontend)
 
 ## Installation
 
@@ -31,11 +30,7 @@ Generate shell commands from natural language using Claude AI. Press **Ctrl+G** 
 git clone https://github.com/yourusername/command_generator.git
 cd command_generator
 
-# Install CLI only
-mise run install-cli
-
-# Or install everything (CLI + web viewer + fish shell integration)
-npm install --prefix web
+# Build and install (CLI + fish shell integration)
 mise run install
 ```
 
@@ -91,7 +86,7 @@ Options:
   --model <model>         Claude model to use (default: opus)
   --context-lines <n>     Lines of terminal history to include (default: 100)
   --output <file>         Write accepted command to file instead of clipboard
-  --logs                  Open the web log viewer
+  --logs                  Open the log viewer
   --help                  Show help
 ```
 
@@ -114,7 +109,7 @@ cmd "run a postgres container with persistent storage"
 cmd "run the tests"  # Uses your Makefile, package.json, etc.
 ```
 
-### Web Log Viewer
+### Log Viewer
 
 View your command generation history:
 
@@ -122,10 +117,11 @@ View your command generation history:
 cmd --logs
 ```
 
-Opens a web interface at `http://localhost:8765` where you can:
+Opens a terminal UI where you can:
 - Browse all generation sessions
-- Filter by status, model, or search query
+- Filter by status or search query
 - View full context (terminal history, build tools, prompts)
+- Copy commands to clipboard
 
 ## Configuration
 
@@ -154,13 +150,4 @@ Example preferences:
 ```bash
 # Build the CLI
 mise run build
-
-# Run frontend dev server
-mise run web-dev
-
-# Build everything
-mise run build-all
-
-# Lint frontend
-cd web && npm run lint
 ```

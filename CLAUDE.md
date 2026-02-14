@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-> Last updated: 2026-02-08
+> Last updated: 2026-02-13
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
@@ -14,27 +14,15 @@ Uses **mise** as the task runner:
 
 ```bash
 mise run build          # Build Go binary to ./cmd
-mise run install-cli    # Install binary to ~/.local/bin/cmd
-mise run web-build      # Build React frontend
-mise run web-dev        # Dev server for frontend (hot reload)
-mise run build-all      # Build both backend and frontend
-mise run install        # Full installation (CLI + web assets + fish integration)
+mise run install        # Build and install binary to ~/.local/bin + fish integration
 mise run uninstall      # Remove binary and fish integration
-```
-
-Frontend (in `web/` directory):
-```bash
-npm install             # Install dependencies
-npm run dev             # Vite dev server
-npm run build           # Production build
-npm run lint            # ESLint
 ```
 
 ## Architecture
 
 ### CLI Flow (main.go)
 
-1. Parse flags (`--model`, `--context-lines`, `--output`, `--logs`, `--help`)
+1. Parse flags (`--model`, `--context-lines`, `--output`, `--logs`, `--help`); `--logs` launches TUI log viewer
 2. Set up SIGINT handler for clean Ctrl+C exit (important for shell key binding integration)
 3. Get query from args or interactive prompt ("What do you need?")
 4. Capture tmux terminal context (scrollback)
@@ -56,7 +44,7 @@ npm run lint            # ESLint
 | `internal/terminal/` | Captures tmux scrollback via `tmux capture-pane` |
 | `internal/logging/` | JSON session logging to `~/.local/share/cmd/logs/` |
 | `internal/clipboard/` | Cross-platform clipboard (pbcopy/xclip) |
-| `internal/server/` | HTTP server for web log viewer |
+| `internal/tui/` | Terminal UI log viewer (Bubbletea-based) |
 | `internal/docs/` | Detects documentation files (README.md, CONTRIBUTING.md, etc.) for context |
 
 ### Build Tools Detection
@@ -67,15 +55,12 @@ Each parser in `internal/buildtools/` implements the `Parser` interface:
 
 To add a new build system, create a new file implementing this interface and register it in `buildtools.go`.
 
-### Web Frontend (`web/`)
+### TUI Log Viewer (`internal/tui/`)
 
-React + TypeScript + Tailwind CSS SPA for browsing generation logs:
-- `/` - Log list with filtering, sorting, pagination
-- `/logs/{id}` - Detailed log view with tabs (response, prompts, context)
-
-API served by Go backend on port 8765:
-- `GET /api/v1/logs` - List logs with query params for filtering
-- `GET /api/v1/logs/{id}` - Full log details
+Terminal-based log viewer using Charm's Bubbletea framework, launched via `cmd --logs`:
+- **List view**: Table with search (`/`), status filter (`s`), copy command (`c`)
+- **Detail view**: 8 tabs (Response, System Prompt, User Prompt, User Query, Tmux Context, Documentation, Build Tools, Preferences)
+- Tab navigation: `tab`/`l` (next), `shift+tab`/`h` (prev), `1-8` (jump)
 
 ### Shell Integration (`shell/`)
 

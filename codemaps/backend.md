@@ -1,12 +1,12 @@
 # Backend Structure
 
-> Last updated: 2026-02-08
+> Last updated: 2026-02-13
 
 ## Directory Structure
 
 ```
 /
-├── main.go                     # CLI entry point (320 lines)
+├── main.go                     # CLI entry point (~270 lines)
 ├── go.mod                      # Module: github.com/jerryluo/cmd
 ├── go.sum                      # Dependency lock
 ├── mise.toml                   # Task runner config
@@ -35,12 +35,14 @@
     │   └── docs_test.go        # Tests
     ├── logging/
     │   └── logging.go          # Session logging + log querying
-    ├── server/
-    │   ├── server.go           # HTTP server + browser launcher
-    │   ├── handlers.go         # API handlers + sorting
-    │   └── middleware.go       # CORS middleware
-    └── terminal/
-        └── context.go          # tmux context capture
+    ├── terminal/
+    │   └── context.go          # tmux context capture
+    └── tui/
+        ├── tui.go              # TUI entry point + main model
+        ├── list.go             # Log list view (table + search + filters)
+        ├── detail.go           # Log detail view (8 tabs + viewport)
+        ├── keys.go             # Keybinding definitions
+        └── styles.go           # Lipgloss styling
 ```
 
 ## Entry Point (`main.go`)
@@ -48,7 +50,7 @@
 ### Responsibilities
 
 1. **Flag Parsing**: `--model`, `--context-lines`, `--output`, `--logs`, `--help`
-2. **Mode Selection**: Log viewer (`--logs`) vs command generation
+2. **Mode Selection**: TUI log viewer (`--logs`) vs command generation
 3. **Context Gathering**: Combines config, tmux scrollback, build tools, docs
 4. **Interactive Loop**: Accept/Reject/Quit handling with single-key input
 5. **Output**: Clipboard copy or file write via `--output`
@@ -58,19 +60,9 @@
 | Function | Purpose |
 |----------|---------|
 | `main()` | Entry point, orchestrates entire flow |
-| `runLogViewer()` | Starts embedded web server + opens browser |
 | `printUsage()` | Displays help message |
 | `printExplanation()` | Formats explanation with bullet points |
 | `readSingleKey()` | Raw terminal input for A/R/Q (via `golang.org/x/term`) |
-
-### Embedded Assets
-
-```go
-//go:embed web/dist
-var webAssets embed.FS
-```
-
-Embeds compiled React app for standalone binary deployment.
 
 ---
 
@@ -212,25 +204,45 @@ func ReadLog(id string) (*SessionLog, error)
 func ReadLogWithID(id string) (*SessionLogWithID, error)
 ```
 
-### `internal/server/`
+### `internal/tui/`
 
-HTTP server for log viewer.
+Terminal UI log viewer built with Charm's Bubbletea framework.
 
-**Port:** 8765 (constant `DefaultPort`)
+**Architecture:** Two-view state machine (list ↔ detail)
 
-**Routes:**
-| Route | Handler |
-|-------|---------|
-| `GET /api/v1/logs` | List logs with filtering/sorting/pagination |
-| `GET /api/v1/logs/{id}` | Get full log details |
-| `GET /*` | Serve React SPA (with index.html fallback) |
+| File | Purpose |
+|------|---------|
+| `tui.go` | Main model, view routing, clipboard ops, `Run()` entry point |
+| `list.go` | Log list table with search and status filtering |
+| `detail.go` | 8-tab detail view with scrollable viewport |
+| `keys.go` | `keyMap` struct with all keybindings |
+| `styles.go` | Lipgloss styles (colors, borders, layout) |
 
-**Middleware:** CORS headers + JSON content type for API routes
+**View States:** `listView`, `detailView`
 
-**Handler Features:**
-- `handleListLogs`: search, status/model filtering, time range, sorting (5 fields), pagination
-- `handleGetLog`: single log lookup by ID
-- `sortLogs`: bubble sort by timestamp, status, model, query, command
+**List View Features:**
+- Table: Query, Status, Model, Time, Command columns
+- Search: `/` activates search input
+- Status filter: `s` cycles all → accepted → rejected → quit → all
+- Copy: `c` copies selected log's command
+
+**Detail View Features:**
+- 8 tabs: Response, System Prompt, User Prompt, User Query, Tmux Context, Documentation, Build Tools, Preferences
+- Tab navigation: `tab`/`l` (next), `shift+tab`/`h` (prev), `1-8` (jump)
+- Scrollable viewport for long content
+- `c` copies content of active tab
+
+**Key Types:**
+```go
+type viewState int // listView, detailView
+
+type model struct {
+    state, list, detail, keys, help, width, height, ready, showHelp, statusMessage
+}
+
+type clipboardCopyMsg struct { err error }
+type clearStatusMsg struct{}
+```
 
 ### `internal/terminal/`
 
@@ -290,21 +302,20 @@ github.com/jerryluo/cmd
 go 1.25.3
 
 require:
-    github.com/BurntSushi/toml v1.6.0  # TOML parsing (mise, pyproject)
-    golang.org/x/sys v0.40.0           # System calls
-    golang.org/x/term v0.39.0          # Terminal raw mode
-    gopkg.in/yaml.v3 v3.0.1            # YAML parsing (taskfile, docker-compose)
+    github.com/BurntSushi/toml v1.6.0          # TOML parsing (mise, pyproject)
+    github.com/charmbracelet/bubbles v1.0.0     # TUI components (table, help, viewport)
+    github.com/charmbracelet/bubbletea v1.3.10  # TUI framework
+    github.com/charmbracelet/lipgloss v1.1.0    # TUI styling
+    golang.org/x/term v0.39.0                   # Terminal raw mode
+    gopkg.in/yaml.v3 v3.0.1                     # YAML parsing (taskfile, docker-compose)
 ```
 
 ---
 
 ## Build Tasks (`mise.toml`)
 
-| Task | Depends On | Description |
-|------|------------|-------------|
-| `build` | `web-build` | Build binary with embedded web assets (`go build -o cmd .`) |
-| `install` | `web-build` | Install to `~/.local/bin/cmd` + fish integration |
-| `uninstall` | | Remove binary and fish integration |
-| `web-install` | | Install npm dependencies (`npm install` in `web/`) |
-| `web-build` | | Build React frontend (`npm run build` in `web/`) |
-| `web-dev` | | Start Vite dev server (`npm run dev` in `web/`) |
+| Task | Description |
+|------|-------------|
+| `build` | Build binary (`go build -o cmd .`) |
+| `install` | Build + install to `~/.local/bin/cmd` + fish integration |
+| `uninstall` | Remove binary and fish integration |

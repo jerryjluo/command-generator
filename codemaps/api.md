@@ -1,99 +1,56 @@
 # API Reference
 
-> Last updated: 2026-02-08
+> Last updated: 2026-02-13
 
-## HTTP API (Log Viewer)
-
-Base URL: `http://localhost:8765/api/v1`
-
-### Endpoints
-
-#### List Logs
+## CLI Interface
 
 ```
-GET /api/v1/logs
+cmd [options] [query]
+cmd --logs
+
+Options:
+  --model <model>        Claude model to use (default: opus)
+  --context-lines <n>    Lines of tmux scrollback (default: 100)
+  --output <file>        Write accepted command to file instead of clipboard
+  --logs                 Launch TUI log viewer
+  --help                 Show usage information
+
+Interactive Commands:
+  A - Accept command (copies to clipboard or writes to --output file)
+  R - Reject with feedback (refine command)
+  Q - Quit without accepting
 ```
 
-Returns paginated list of session logs with filtering and sorting.
+## TUI Log Viewer Keybindings
 
-**Query Parameters:**
+### Global
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `status` | string | | Filter by final status: `accepted`, `rejected`, `quit` |
-| `model` | string | | Filter by Claude model used |
-| `search` | string | | Full-text search on query, command, and explanation |
-| `from` | string | | Start date (RFC3339 format) |
-| `to` | string | | End date (RFC3339 format) |
-| `sort` | string | | Sort field: `timestamp`, `status`, `model`, `query`, `command` |
-| `order` | string | `desc` | Sort order: `asc`, `desc` |
-| `limit` | int | `100` | Results per page (max 1000) |
-| `offset` | int | `0` | Skip N results for pagination |
+| Key | Action |
+|-----|--------|
+| `q` / `Ctrl+C` | Quit |
+| `?` | Toggle help |
 
-**Response:**
+### List View
 
-```json
-{
-    "logs": [
-        {
-            "id": "2026-02-01T10-30-00Z",
-            "user_query": "list all go files",
-            "final_status": "accepted",
-            "model": "opus",
-            "timestamp": "2026-02-01T10:30:00Z",
-            "iteration_count": 1,
-            "command_preview": "fd -e go",
-            "tmux_session": "dev"
-        }
-    ],
-    "total": 150,
-    "limit": 100,
-    "offset": 0
-}
-```
+| Key | Action |
+|-----|--------|
+| `enter` | View log details |
+| `/` | Search logs |
+| `s` | Cycle status filter (all → accepted → rejected → quit) |
+| `c` | Copy selected log's command |
+| `esc` | Clear search |
+| Arrow keys / PgUp / PgDn | Navigate |
 
-#### Get Log Detail
+### Detail View
 
-```
-GET /api/v1/logs/{id}
-```
-
-Returns full session log including all iterations and context.
-
-**Response:**
-
-```json
-{
-    "id": "2026-02-01T10-30-00Z",
-    "user_query": "list all go files",
-    "context_sources": {
-        "claude_md_content": "...",
-        "terminal_context": "...",
-        "documentation_context": "..."
-    },
-    "iterations": [...],
-    "metadata": {...}
-}
-```
-
-### Middleware
-
-All API endpoints include:
-- CORS headers (`Access-Control-Allow-Origin: *`)
-- JSON content type (`Content-Type: application/json`)
-- OPTIONS preflight handling
-
-### Error Response
-
-```json
-{
-    "error": "Error message description"
-}
-```
-
-### Static Assets
-
-All non-API routes serve the embedded React SPA with fallback to `index.html` for client-side routing.
+| Key | Action |
+|-----|--------|
+| `tab` / `l` | Next tab |
+| `shift+tab` / `h` | Previous tab |
+| `1-8` | Jump to specific tab |
+| `c` | Copy active tab content |
+| `esc` / `backspace` | Back to list |
+| Arrow keys | Scroll content |
 
 ---
 
@@ -257,75 +214,11 @@ var RelevantHeadingPatterns = []string{
 func Copy(text string) error
 ```
 
-### Server Package (`internal/server/`)
+### TUI Package (`internal/tui/`)
 
 ```go
-const DefaultPort = 8765
-
-// NewServer creates an HTTP server with embedded assets
-func NewServer(port int, assets fs.FS) *Server
-
-// Start begins serving HTTP requests
-func (s *Server) Start() error
-
-// Shutdown gracefully stops the server
-func (s *Server) Shutdown(ctx context.Context) error
-
-// URL returns the server's base URL
-func (s *Server) URL() string
-
-// OpenBrowser opens the default browser (macOS, Linux, Windows)
-func OpenBrowser(url string) error
-```
-
-**Server Response Types:**
-
-```go
-type LogListResponse struct {
-    Logs   []logging.LogSummary `json:"logs"`
-    Total  int                  `json:"total"`
-    Limit  int                  `json:"limit"`
-    Offset int                  `json:"offset"`
-}
-
-type ErrorResponse struct {
-    Error string `json:"error"`
-}
-```
-
----
-
-## Frontend API Client (`web/src/api/logs.ts`)
-
-```typescript
-const API_BASE = '/api/v1';
-
-// Fetch paginated log list with filters
-async function fetchLogs(params: FilterParams): Promise<LogListResponse>
-
-// Fetch full log details by ID
-async function fetchLogById(id: string): Promise<SessionLog>
-```
-
----
-
-## CLI Interface
-
-```
-cmd [options] [query]
-cmd --logs
-
-Options:
-  --model <model>        Claude model to use (default: opus)
-  --context-lines <n>    Lines of tmux scrollback (default: 100)
-  --output <file>        Write accepted command to file instead of clipboard
-  --logs                 Open log viewer in browser
-  --help                 Show usage information
-
-Interactive Commands:
-  A - Accept command (copies to clipboard or writes to --output file)
-  R - Reject with feedback (refine command)
-  Q - Quit without accepting
+// Run starts the TUI log viewer (alternate screen mode)
+func Run()
 ```
 
 ---
